@@ -12,6 +12,7 @@
 // limitations under the License.
 
 extern crate raft;
+extern crate sawtooth_sdk;
 
 use std::collections::HashMap;
 use std::sync::mpsc::{self, RecvTimeoutError};

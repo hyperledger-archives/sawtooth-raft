@@ -5,3 +5,4 @@ authors = ["Intel Corporation"]
 
 [dependencies]
 raft = "0.3.0"
+sawtooth_sdk = { git = "https://github.com/hyperledger/sawtooth-core.git" }
