@@ -14,10 +14,10 @@
 extern crate raft;
 extern crate sawtooth_sdk;
 
+use std::cmp;
 use std::collections::HashMap;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
-use std::time::{Duration};
 
 use raft::{
     eraftpb::{
@@ -59,12 +59,14 @@ fn main() {
 
     let (sender, receiver) = mpsc::channel();
 
-    // Use another thread to propose a Raft request.
-    send_propose(sender);
-
     // Loop forever to drive the Raft.
-    let mut timeout = config::TICK_PERIOD;
-    let mut raft_ticker = ticker::Ticker::new(timeout);
+    let raft_timeout = config::RAFT_PERIOD;
+    let publish_timeout = config::PUBLISH_PERIOD;
+
+    let mut raft_ticker = ticker::Ticker::new(raft_timeout);
+    let mut publish_ticker = ticker::Ticker::new(publish_timeout);
+
+    let mut timeout = cmp::min(raft_timeout, publish_timeout);
 
     // Use a HashMap to hold the `propose` callbacks.
     let mut cbs = HashMap::new();
@@ -80,9 +82,19 @@ fn main() {
             Err(RecvTimeoutError::Disconnected) => return,
         }
 
-        timeout = raft_ticker.tick(|| {
+        let raft_timeout = raft_ticker.tick(|| {
             node.tick();
         });
+        let publish_timeout = publish_ticker.tick(|| {
+            match node.raft.state {
+                raft::StateRole::Leader => {
+                    // Use another thread to propose a Raft request.
+                    send_propose(sender.clone());
+                },
+                _ => (),
+            }
+        });
+        timeout = cmp::min(raft_timeout, publish_timeout);
 
         on_ready(&mut node, &mut cbs);
     }
@@ -159,10 +171,7 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
 }
 
 fn send_propose(sender: mpsc::Sender<Msg>) {
-    thread::spawn(move || loop {
-        // Wait some time and send the request to the Raft.
-        thread::sleep(Duration::from_secs(2));
-
+    thread::spawn(move || {
         let (s1, r1) = mpsc::channel::<u8>();
 
         println!("propose a request");
