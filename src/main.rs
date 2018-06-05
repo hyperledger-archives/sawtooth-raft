@@ -18,8 +18,14 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use raft::prelude::*;
-use raft::storage::MemStorage;
+use raft::{
+    eraftpb::{
+        EntryType,
+        Message,
+    },
+    raw_node::RawNode,
+    storage::MemStorage,
+};
 
 mod config;
 
