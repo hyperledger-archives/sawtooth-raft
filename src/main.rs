@@ -17,7 +17,7 @@ extern crate sawtooth_sdk;
 use std::collections::HashMap;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration};
 
 use raft::{
     eraftpb::{
@@ -29,6 +29,7 @@ use raft::{
 };
 
 mod config;
+mod ticker;
 
 type ProposeCallback = Box<Fn() + Send>;
 
@@ -62,8 +63,8 @@ fn main() {
     send_propose(sender);
 
     // Loop forever to drive the Raft.
-    let mut t = Instant::now();
     let mut timeout = config::TICK_PERIOD;
+    let mut raft_ticker = ticker::Ticker::new(timeout);
 
     // Use a HashMap to hold the `propose` callbacks.
     let mut cbs = HashMap::new();
@@ -79,15 +80,9 @@ fn main() {
             Err(RecvTimeoutError::Disconnected) => return,
         }
 
-        let d = t.elapsed();
-        if d >= timeout {
-            t = Instant::now();
-            timeout = Duration::from_millis(config::TICK_PERIOD);
-            // We drive Raft every 100ms.
+        timeout = raft_ticker.tick(|| {
             r.tick();
-        } else {
-            timeout -= d;
-        }
+        });
 
         on_ready(&mut r, &mut cbs);
     }
@@ -164,9 +159,9 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
 }
 
 fn send_propose(sender: mpsc::Sender<Msg>) {
-    thread::spawn(move || {
+    thread::spawn(move || loop {
         // Wait some time and send the request to the Raft.
-        thread::sleep(Duration::from_secs(10));
+        thread::sleep(Duration::from_secs(2));
 
         let (s1, r1) = mpsc::channel::<u8>();
 
