@@ -15,7 +15,11 @@
  * ------------------------------------------------------------------------------
  */
 
+use std::time::Duration;
+
 use raft::{Config, storage::{MemStorage}};
+
+pub const TICK_PERIOD: Duration = Duration::from_millis(100);
 
 pub fn raft_config() -> Config {
     Config {

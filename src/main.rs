@@ -63,7 +63,7 @@ fn main() {
 
     // Loop forever to drive the Raft.
     let mut t = Instant::now();
-    let mut timeout = Duration::from_millis(100);
+    let mut timeout = config::TICK_PERIOD;
 
     // Use a HashMap to hold the `propose` callbacks.
     let mut cbs = HashMap::new();
@@ -82,7 +82,7 @@ fn main() {
         let d = t.elapsed();
         if d >= timeout {
             t = Instant::now();
-            timeout = Duration::from_millis(100);
+            timeout = Duration::from_millis(config::TICK_PERIOD);
             // We drive Raft every 100ms.
             r.tick();
         } else {
