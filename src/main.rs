@@ -55,7 +55,7 @@ fn main() {
     let cfg = config::raft_config();
 
     // Create the Raft node.
-    let mut r = RawNode::new(&cfg, storage, vec![]).unwrap();
+    let mut node = RawNode::new(&cfg, storage, vec![]).unwrap();
 
     let (sender, receiver) = mpsc::channel();
 
@@ -73,18 +73,18 @@ fn main() {
         match receiver.recv_timeout(timeout) {
             Ok(Msg::Propose { id, cb }) => {
                 cbs.insert(id, cb);
-                r.propose(vec![], vec![id]).unwrap();
+                node.propose(vec![], vec![id]).unwrap();
             }
-            Ok(Msg::Raft(m)) => r.step(m).unwrap(),
+            Ok(Msg::Raft(m)) => node.step(m).unwrap(),
             Err(RecvTimeoutError::Timeout) => (),
             Err(RecvTimeoutError::Disconnected) => return,
         }
 
         timeout = raft_ticker.tick(|| {
-            r.tick();
+            node.tick();
         });
 
-        on_ready(&mut r, &mut cbs);
+        on_ready(&mut node, &mut cbs);
     }
 }
 
