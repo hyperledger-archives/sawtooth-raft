@@ -14,35 +14,14 @@
 extern crate raft;
 extern crate sawtooth_sdk;
 
-use std::cmp;
-use std::collections::HashMap;
-use std::sync::mpsc::{self, RecvTimeoutError};
-use std::thread;
+use std::process;
 
-use raft::{
-    eraftpb::{
-        EntryType,
-        Message,
-    },
-    raw_node::RawNode,
-    storage::MemStorage,
-};
+use raft::RawNode;
+use sawtooth_sdk::consensus::zmq_driver::ZmqDriver;
 
 mod config;
+mod engine;
 mod ticker;
-
-type ProposeCallback = Box<Fn() + Send>;
-
-enum Msg {
-    Propose {
-        id: u8,
-        cb: ProposeCallback,
-    },
-    // Here we don't use Raft Message, so use dead_code to
-    // avoid the compiler warning.
-    #[allow(dead_code)]
-    Raft(Message),
-}
 
 // A simple example about how to use the Raft library in Rust.
 fn main() {
@@ -55,141 +34,15 @@ fn main() {
     let cfg = config::raft_config();
 
     // Create the Raft node.
-    let mut node = RawNode::new(&cfg, storage, vec![]).unwrap();
+    let node = RawNode::new(&cfg, storage, vec![]).unwrap();
 
-    let (sender, receiver) = mpsc::channel();
+    let raft_engine = engine::RaftEngine::new(node);
 
-    // Loop forever to drive the Raft.
-    let raft_timeout = config::RAFT_PERIOD;
-    let publish_timeout = config::PUBLISH_PERIOD;
+    let endpoint = "tcp://127.0.0.1:5050";
 
-    let mut raft_ticker = ticker::Ticker::new(raft_timeout);
-    let mut publish_ticker = ticker::Ticker::new(publish_timeout);
-
-    let mut timeout = cmp::min(raft_timeout, publish_timeout);
-
-    // Use a HashMap to hold the `propose` callbacks.
-    let mut cbs = HashMap::new();
-
-    loop {
-        match receiver.recv_timeout(timeout) {
-            Ok(Msg::Propose { id, cb }) => {
-                cbs.insert(id, cb);
-                node.propose(vec![], vec![id]).unwrap();
-            }
-            Ok(Msg::Raft(m)) => node.step(m).unwrap(),
-            Err(RecvTimeoutError::Timeout) => (),
-            Err(RecvTimeoutError::Disconnected) => return,
-        }
-
-        let raft_timeout = raft_ticker.tick(|| {
-            node.tick();
-        });
-        let publish_timeout = publish_ticker.tick(|| {
-            match node.raft.state {
-                raft::StateRole::Leader => {
-                    // Use another thread to propose a Raft request.
-                    send_propose(sender.clone());
-                },
-                _ => (),
-            }
-        });
-        timeout = cmp::min(raft_timeout, publish_timeout);
-
-        on_ready(&mut node, &mut cbs);
-    }
-}
-
-fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>) {
-    if !r.has_ready() {
-        return;
-    }
-
-    // The Raft is ready, we can do something now.
-    let mut ready = r.ready();
-
-    let is_leader = r.raft.leader_id == 1;
-    if is_leader {
-        // If the peer is leader, the leader can send messages to other followers ASAP.
-        let msgs = ready.messages.drain(..);
-        for _msg in msgs {
-            // Here we only have one peer, so can ignore this.
-        }
-    }
-
-    if !raft::is_empty_snap(&ready.snapshot) {
-        // This is a snapshot, we need to apply the snapshot at first.
-        r.mut_store()
-            .wl()
-            .apply_snapshot(ready.snapshot.clone())
-            .unwrap();
-    }
-
-    if !ready.entries.is_empty() {
-        // Append entries to the Raft log
-        r.mut_store().wl().append(&ready.entries).unwrap();
-    }
-
-    if let Some(ref hs) = ready.hs {
-        // Raft HardState changed, and we need to persist it.
-        r.mut_store().wl().set_hardstate(hs.clone());
-    }
-
-    if !is_leader {
-        // If not leader, the follower needs to reply the messages to
-        // the leader after appending Raft entries.
-        let msgs = ready.messages.drain(..);
-        for _msg in msgs {
-            // Send messages to other peers.
-        }
-    }
-
-    if let Some(committed_entries) = ready.committed_entries.take() {
-        let mut _last_apply_index = 0;
-        for entry in committed_entries {
-            // Mostly, you need to save the last apply index to resume applying
-            // after restart. Here we just ignore this because we use a Memory storage.
-            _last_apply_index = entry.get_index();
-
-            if entry.get_data().is_empty() {
-                // Emtpy entry, when the peer becomes Leader it will send an empty entry.
-                continue;
-            }
-
-            if entry.get_entry_type() == EntryType::EntryNormal {
-                if let Some(cb) = cbs.remove(entry.get_data().get(0).unwrap()) {
-                    cb();
-                }
-            }
-
-            // TODO: handle EntryConfChange
-        }
-    }
-
-    // Advance the Raft
-    r.advance(ready);
-}
-
-fn send_propose(sender: mpsc::Sender<Msg>) {
-    thread::spawn(move || {
-        let (s1, r1) = mpsc::channel::<u8>();
-
-        println!("propose a request");
-
-        // Send a command to the Raft, wait for the Raft to apply it
-        // and get the result.
-        sender
-            .send(Msg::Propose {
-                id: 1,
-                cb: Box::new(move || {
-                    s1.send(0).unwrap();
-                }),
-            })
-            .unwrap();
-
-        let n = r1.recv().unwrap();
-        assert_eq!(n, 0);
-
-        println!("receive the propose callback");
+    let (driver, _stop) = ZmqDriver::new();
+    driver.start(endpoint, raft_engine).unwrap_or_else(|err| {
+        eprintln!("{}", err);
+        process::exit(1);
     });
 }
