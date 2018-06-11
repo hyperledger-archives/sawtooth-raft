@@ -92,7 +92,9 @@ impl Engine for RaftEngine {
             });
             timeout = cmp::min(raft_timeout, publish_timeout);
 
-            self.on_ready(&mut cbs);
+            if self.raft_node.has_ready() {
+                self.on_ready(&mut cbs);
+            }
         }
     }
 
@@ -134,10 +136,6 @@ impl RaftEngine {
     }
 
     fn on_ready(&mut self, cbs: &mut HashMap<u8, ProposeCallback>) {
-        if !self.raft_node.has_ready() {
-            return;
-        }
-
         // The Raft is ready, we can do something now.
         let mut ready = self.raft_node.ready();
 
