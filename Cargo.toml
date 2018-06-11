@@ -4,5 +4,6 @@ version = "0.1.0"
 authors = ["Intel Corporation"]
 
 [dependencies]
+protobuf = "2"
 raft = "0.3.0"
 sawtooth_sdk = { git = "https://github.com/hyperledger/sawtooth-core.git" }

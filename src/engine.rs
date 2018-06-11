@@ -17,21 +17,21 @@
 
 use std::cmp;
 use std::collections::HashMap;
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
-use std::thread;
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
 
+use protobuf::{self, ProtobufError};
 use raft::{
     self,
     eraftpb::{
         EntryType,
-        Message,
+        Message as RaftMessage,
     },
     raw_node::RawNode,
     storage::MemStorage,
 };
 
 use sawtooth_sdk::consensus::{
-    engine::{Block, PeerInfo, Engine, Update},
+    engine::{Block, PeerInfo, PeerMessage, Engine, Error, Update},
     service::Service,
 };
 
@@ -40,17 +40,6 @@ use ticker;
 
 
 type ProposeCallback = Box<Fn() + Send>;
-
-enum Msg {
-    Propose {
-        id: u8,
-        cb: ProposeCallback,
-    },
-    // Here we don't use Raft Message, so use dead_code to
-    // avoid the compiler warning.
-    #[allow(dead_code)]
-    Raft(Message),
-}
 
 pub struct RaftEngine {
     raft_node: RawNode<MemStorage>,
@@ -65,14 +54,11 @@ impl RaftEngine {
 impl Engine for RaftEngine {
     fn start(
         &mut self,
-        _updates: Receiver<Update>,
-        _service: Box<Service>,
+        updates: Receiver<Update>,
+        mut service: Box<Service>,
         _chain_head: Block,
         _peers: Vec<PeerInfo>,
     ) {
-        let (sender, receiver) = mpsc::channel();
-
-        // Loop forever to drive the Raft.
         let raft_timeout = config::RAFT_PERIOD;
         let publish_timeout = config::PUBLISH_PERIOD;
 
@@ -84,30 +70,25 @@ impl Engine for RaftEngine {
         // Use a HashMap to hold the `propose` callbacks.
         let mut cbs = HashMap::new();
 
+        service.initialize_block(None).expect("Initialize block failed");
+
+        // Loop forever to drive the Raft.
         loop {
-            match receiver.recv_timeout(timeout) {
+            match updates.recv_timeout(timeout) {
                 // Propose is the equivalent of publish block
-                Ok(Msg::Propose { id, cb }) => {
-                    cbs.insert(id, cb);
-                    self.raft_node.propose(vec![], vec![id]).unwrap();
-                }
+                Ok(Update::BlockNew(block)) => self.on_block_new(block),
                 // This is a consensus message that should be passed to the node
-                Ok(Msg::Raft(m)) => self.raft_node.step(m).unwrap(),
+                Ok(Update::PeerMessage(message, _id)) => self.on_peer_message(message),
                 Err(RecvTimeoutError::Timeout) => (),
                 Err(RecvTimeoutError::Disconnected) => return,
+                _ => unimplemented!(),
             }
 
             let raft_timeout = raft_ticker.tick(|| {
                 self.raft_node.tick();
             });
             let publish_timeout = publish_ticker.tick(|| {
-                match self.raft_node.raft.state {
-                    raft::StateRole::Leader => {
-                        // Use another thread to propose a Raft request.
-                        send_propose(sender.clone());
-                    },
-                    _ => (),
-                }
+                self.propose_block(&mut service)
             });
             timeout = cmp::min(raft_timeout, publish_timeout);
 
@@ -121,6 +102,35 @@ impl Engine for RaftEngine {
 
     fn name(&self) -> String {
         "Raft".into()
+    }
+}
+
+impl RaftEngine {
+    fn on_block_new(&mut self, block: Block) {
+        self.raft_node.propose(vec![], block.block_id.into()).unwrap();
+    }
+
+    fn on_peer_message(&mut self, message: PeerMessage) {
+        let raft_message = try_into_raft_message(&message)
+            .expect("Failed to interpret bytes as Raft message");
+        self.raft_node.step(raft_message)
+            .expect("Failed to handle Raft message");
+    }
+
+    fn propose_block(&self, service: &mut Box<Service>) {
+        match self.raft_node.raft.state {
+            raft::StateRole::Leader => {
+                match service.finalize_block(vec![]) {
+                    Ok(block_id) => {
+                        println!("Published block '{:?}'", block_id);
+                        service.initialize_block(None).expect("Initialize block failed");
+                    },
+                    Err(Error::BlockNotReady) => (),
+                    Err(err) => panic!("Failed to initialize block: {:?}", err),
+                }
+            },
+            _ => (),
+        }
     }
 }
 
@@ -194,26 +204,6 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
     r.advance(ready);
 }
 
-fn send_propose(sender: mpsc::Sender<Msg>) {
-    thread::spawn(move || {
-        let (s1, r1) = mpsc::channel::<u8>();
-
-        println!("propose a request");
-
-        // Send a command to the Raft, wait for the Raft to apply it
-        // and get the result.
-        sender
-            .send(Msg::Propose {
-                id: 1,
-                cb: Box::new(move || {
-                    s1.send(0).unwrap();
-                }),
-            })
-            .unwrap();
-
-        let n = r1.recv().unwrap();
-        assert_eq!(n, 0);
-
-        println!("receive the propose callback");
-    });
+fn try_into_raft_message(message: &PeerMessage) -> Result<RaftMessage, ProtobufError> {
+    protobuf::parse_from_bytes(&message.content)
 }
