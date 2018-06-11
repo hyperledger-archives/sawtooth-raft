@@ -92,7 +92,7 @@ impl Engine for RaftEngine {
             });
             timeout = cmp::min(raft_timeout, publish_timeout);
 
-            on_ready(&mut self.raft_node, &mut cbs);
+            self.on_ready(&mut cbs);
         }
     }
 
@@ -132,76 +132,76 @@ impl RaftEngine {
             _ => (),
         }
     }
-}
 
-fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>) {
-    if !r.has_ready() {
-        return;
-    }
-
-    // The Raft is ready, we can do something now.
-    let mut ready = r.ready();
-
-    let is_leader = r.raft.leader_id == 1;
-    if is_leader {
-        // If the peer is leader, the leader can send messages to other followers ASAP.
-        let msgs = ready.messages.drain(..);
-        for _msg in msgs {
-            // Here we only have one peer, so can ignore this.
+    fn on_ready(&mut self, cbs: &mut HashMap<u8, ProposeCallback>) {
+        if !self.raft_node.has_ready() {
+            return;
         }
-    }
 
-    if !raft::is_empty_snap(&ready.snapshot) {
-        // This is a snapshot, we need to apply the snapshot at first.
-        r.mut_store()
-            .wl()
-            .apply_snapshot(ready.snapshot.clone())
-            .unwrap();
-    }
+        // The Raft is ready, we can do something now.
+        let mut ready = self.raft_node.ready();
 
-    if !ready.entries.is_empty() {
-        // Append entries to the Raft log
-        r.mut_store().wl().append(&ready.entries).unwrap();
-    }
-
-    if let Some(ref hs) = ready.hs {
-        // Raft HardState changed, and we need to persist it.
-        r.mut_store().wl().set_hardstate(hs.clone());
-    }
-
-    if !is_leader {
-        // If not leader, the follower needs to reply the messages to
-        // the leader after appending Raft entries.
-        let msgs = ready.messages.drain(..);
-        for _msg in msgs {
-            // Send messages to other peers.
-        }
-    }
-
-    if let Some(committed_entries) = ready.committed_entries.take() {
-        let mut _last_apply_index = 0;
-        for entry in committed_entries {
-            // Mostly, you need to save the last apply index to resume applying
-            // after restart. Here we just ignore this because we use a Memory storage.
-            _last_apply_index = entry.get_index();
-
-            if entry.get_data().is_empty() {
-                // Emtpy entry, when the peer becomes Leader it will send an empty entry.
-                continue;
+        let is_leader = self.raft_node.raft.leader_id == 1;
+        if is_leader {
+            // If the peer is leader, the leader can send messages to other followers ASAP.
+            let msgs = ready.messages.drain(..);
+            for _msg in msgs {
+                // Here we only have one peer, so can ignore this.
             }
+        }
 
-            if entry.get_entry_type() == EntryType::EntryNormal {
-                if let Some(cb) = cbs.remove(entry.get_data().get(0).unwrap()) {
-                    cb();
+        if !raft::is_empty_snap(&ready.snapshot) {
+            // This is a snapshot, we need to apply the snapshot at first.
+            self.raft_node.mut_store()
+                .wl()
+                .apply_snapshot(ready.snapshot.clone())
+                .unwrap();
+        }
+
+        if !ready.entries.is_empty() {
+            // Append entries to the Raft log
+            self.raft_node.mut_store().wl().append(&ready.entries).unwrap();
+        }
+
+        if let Some(ref hs) = ready.hs {
+            // Raft HardState changed, and we need to persist it.
+            self.raft_node.mut_store().wl().set_hardstate(hs.clone());
+        }
+
+        if !is_leader {
+            // If not leader, the follower needs to reply the messages to
+            // the leader after appending Raft entries.
+            let msgs = ready.messages.drain(..);
+            for _msg in msgs {
+                // Send messages to other peers.
+            }
+        }
+
+        if let Some(committed_entries) = ready.committed_entries.take() {
+            let mut _last_apply_index = 0;
+            for entry in committed_entries {
+                // Mostly, you need to save the last apply index to resume applying
+                // after restart. Here we just ignore this because we use a Memory storage.
+                _last_apply_index = entry.get_index();
+
+                if entry.get_data().is_empty() {
+                    // Emtpy entry, when the peer becomes Leader it will send an empty entry.
+                    continue;
                 }
+
+                if entry.get_entry_type() == EntryType::EntryNormal {
+                    if let Some(cb) = cbs.remove(entry.get_data().get(0).unwrap()) {
+                        cb();
+                    }
+                }
+
+                // TODO: handle EntryConfChange
             }
-
-            // TODO: handle EntryConfChange
         }
-    }
 
-    // Advance the Raft
-    r.advance(ready);
+        // Advance the Raft
+        self.raft_node.advance(ready);
+    }
 }
 
 fn try_into_raft_message(message: &PeerMessage) -> Result<RaftMessage, ProtobufError> {
