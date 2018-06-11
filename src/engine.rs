@@ -19,7 +19,7 @@ use std::cmp;
 use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 
-use protobuf::{self, ProtobufError};
+use protobuf::{self, Message as ProtobufMessage, ProtobufError};
 use raft::{
     self,
     eraftpb::{
@@ -93,7 +93,7 @@ impl Engine for RaftEngine {
             timeout = cmp::min(raft_timeout, publish_timeout);
 
             if self.raft_node.has_ready() {
-                self.on_ready(&mut cbs);
+                self.on_ready(&mut cbs, &mut service);
             }
         }
     }
@@ -135,7 +135,7 @@ impl RaftEngine {
         }
     }
 
-    fn on_ready(&mut self, cbs: &mut HashMap<u8, ProposeCallback>) {
+    fn on_ready(&mut self, cbs: &mut HashMap<u8, ProposeCallback>, _service: &mut Box<Service>) {
         // The Raft is ready, we can do something now.
         let mut ready = self.raft_node.ready();
 
@@ -143,8 +143,10 @@ impl RaftEngine {
         if is_leader {
             // If the peer is leader, the leader can send messages to other followers ASAP.
             let msgs = ready.messages.drain(..);
-            for _msg in msgs {
-                // Here we only have one peer, so can ignore this.
+            for msg in msgs {
+                let _peer_msg = try_into_peer_message(&msg)
+                    .expect("Failed to convert into peer message");
+                // TODO: Send to peer
             }
         }
 
@@ -170,8 +172,11 @@ impl RaftEngine {
             // If not leader, the follower needs to reply the messages to
             // the leader after appending Raft entries.
             let msgs = ready.messages.drain(..);
-            for _msg in msgs {
+            for msg in msgs {
                 // Send messages to other peers.
+                let _peer_msg = try_into_peer_message(&msg)
+                    .expect("Failed to convert into peer message");
+                // TODO: Send to peer
             }
         }
 
@@ -204,4 +209,11 @@ impl RaftEngine {
 
 fn try_into_raft_message(message: &PeerMessage) -> Result<RaftMessage, ProtobufError> {
     protobuf::parse_from_bytes(&message.content)
+}
+
+fn try_into_peer_message(message: &RaftMessage) -> Result<PeerMessage, ProtobufError> {
+    Ok(PeerMessage {
+        message_type: String::new(),
+        content: message.write_to_bytes()?,
+    })
 }
