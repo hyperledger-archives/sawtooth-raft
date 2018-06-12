@@ -19,6 +19,7 @@ extern crate protobuf;
 extern crate raft;
 extern crate sawtooth_sdk;
 extern crate simple_logger;
+extern crate serde_json;
 
 use std::process;
 

@@ -31,6 +31,7 @@ use sawtooth_sdk::consensus::{
     service::Service,
 };
 
+// TODO: add peers
 pub struct SawtoothRaftNode {
     raw_node: RawNode<MemStorage>,
     service: Box<Service>,
@@ -62,6 +63,7 @@ impl SawtoothRaftNode {
             .expect("Failed to handle Raft message");
     }
 
+    // TODO: This should be more conservative, only publish if the proposed block has been committed
     pub fn propose_block(&mut self) {
         match self.raw_node.raft.state {
             raft::StateRole::Leader => {

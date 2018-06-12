@@ -24,9 +24,12 @@ pub const PUBLISH_PERIOD: Duration = Duration::from_secs(3);
 pub fn default_raft_config(id: u64) -> Config {
     let mut config = Config::default();
     config.id = id;
-    config.heartbeat_tick = 150;
-    config.election_tick = config.heartbeat_tick * 10;
-    config.max_inflight_msgs = 10;
+
+    // TODO: Peers needs to be empty if rejoining, populated if new network
+    config.peers.push(id);
+    config.election_tick = 10;
+    config.heartbeat_tick = 3;
+    config.max_inflight_msgs = 256;
     config.validate().expect("Invalid Raft Config");
     config
 }
