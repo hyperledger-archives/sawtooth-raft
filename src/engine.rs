@@ -16,6 +16,7 @@
  */
 
 use std::cmp;
+use std::time::Duration;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 
 use raft::{
@@ -43,6 +44,8 @@ impl RaftEngine {
     }
 }
 
+pub const RAFT_TIMEOUT: Duration = Duration::from_millis(100);
+
 impl Engine for RaftEngine {
     fn start(
         &mut self,
@@ -51,7 +54,6 @@ impl Engine for RaftEngine {
         _chain_head: Block,
         _peers: Vec<PeerInfo>,
     ) {
-        let raft_timeout = config::RAFT_PERIOD;
 
         // Create a storage for Raft, and here we just use a simple memory storage.
         // You need to build your own persistent storage in your production.
@@ -69,6 +71,7 @@ impl Engine for RaftEngine {
 
         let mut node = SawtoothRaftNode::new(raw_node, service);
 
+        let raft_timeout = RAFT_TIMEOUT;
         let publish_timeout = config::PUBLISH_PERIOD;
 
         let mut raft_ticker = ticker::Ticker::new(raft_timeout);
