@@ -16,7 +16,6 @@
  */
 
 use std::cmp;
-use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 
 use protobuf::{self, Message as ProtobufMessage, ProtobufError};
@@ -31,15 +30,13 @@ use raft::{
 };
 
 use sawtooth_sdk::consensus::{
-    engine::{Block, PeerInfo, PeerMessage, Engine, Error, Update},
+    engine::{Block, BlockId, PeerInfo, PeerMessage, Engine, Error, Update},
     service::Service,
 };
 
 use config;
 use ticker;
 
-
-type ProposeCallback = Box<Fn() + Send>;
 
 pub struct RaftEngine {
     raft_node: RawNode<MemStorage>,
@@ -67,9 +64,6 @@ impl Engine for RaftEngine {
 
         let mut timeout = cmp::min(raft_timeout, publish_timeout);
 
-        // Use a HashMap to hold the `propose` callbacks.
-        let mut cbs = HashMap::new();
-
         trace!("Initializing first block");
         service.initialize_block(None).expect("Initialize block failed");
 
@@ -78,7 +72,9 @@ impl Engine for RaftEngine {
             trace!("Top of main loop");
             match updates.recv_timeout(timeout) {
                 // Propose is the equivalent of publish block
-                Ok(Update::BlockNew(block)) => self.on_block_new(block),
+                Ok(Update::BlockNew(block)) => self.on_block_new(block, &mut service),
+                Ok(Update::BlockValid(block_id)) => self.on_block_valid(block_id),
+                Ok(Update::BlockCommit(block_id)) => self.on_block_commit(block_id),
                 // This is a consensus message that should be passed to the node
                 Ok(Update::PeerMessage(message, _id)) => self.on_peer_message(message),
                 Err(RecvTimeoutError::Timeout) => (),
@@ -95,7 +91,7 @@ impl Engine for RaftEngine {
             timeout = cmp::min(raft_timeout, publish_timeout);
 
             if self.raft_node.has_ready() {
-                self.on_ready(&mut cbs, &mut service);
+                self.on_ready(&mut service);
             }
         }
     }
@@ -110,8 +106,18 @@ impl Engine for RaftEngine {
 }
 
 impl RaftEngine {
-    fn on_block_new(&mut self, block: Block) {
-        self.raft_node.propose(vec![], block.block_id.into()).unwrap();
+    fn on_block_new(&mut self, block: Block, service: &mut Box<Service>) {
+        trace!("Received new block: {:?}", block);
+        service.check_blocks(vec![block.block_id]).expect("Failed to send check blocks");
+    }
+
+    fn on_block_valid(&mut self, block_id: BlockId) {
+        trace!("Block will commit: {:?}", block_id);
+        self.raft_node.propose(vec![], block_id.into()).expect("Failed to propose block to Raft");
+    }
+
+    fn on_block_commit(&mut self, block_id: BlockId) {
+        trace!("Block committed: {:?}", block_id);
     }
 
     fn on_peer_message(&mut self, message: PeerMessage) {
@@ -137,7 +143,7 @@ impl RaftEngine {
         }
     }
 
-    fn on_ready(&mut self, cbs: &mut HashMap<u8, ProposeCallback>, _service: &mut Box<Service>) {
+    fn on_ready(&mut self, service: &mut Box<Service>) {
         // The Raft is ready, we can do something now.
         let mut ready = self.raft_node.ready();
 
@@ -195,9 +201,9 @@ impl RaftEngine {
                 }
 
                 if entry.get_entry_type() == EntryType::EntryNormal {
-                    if let Some(cb) = cbs.remove(entry.get_data().get(0).unwrap()) {
-                        cb();
-                    }
+                    trace!("Entry committed: {:?}", entry);
+                    let block_id: BlockId = BlockId::from(Vec::from(entry.get_data()));
+                    service.commit_block(block_id).expect("Failed to commit block");
                 }
 
                 // TODO: handle EntryConfChange
