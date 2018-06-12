@@ -70,10 +70,12 @@ impl Engine for RaftEngine {
         // Use a HashMap to hold the `propose` callbacks.
         let mut cbs = HashMap::new();
 
+        trace!("Initializing first block");
         service.initialize_block(None).expect("Initialize block failed");
 
         // Loop forever to drive the Raft.
         loop {
+            trace!("Top of main loop");
             match updates.recv_timeout(timeout) {
                 // Propose is the equivalent of publish block
                 Ok(Update::BlockNew(block)) => self.on_block_new(block),

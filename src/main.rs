@@ -11,9 +11,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[macro_use]
+extern crate log;
 extern crate protobuf;
 extern crate raft;
 extern crate sawtooth_sdk;
+extern crate simple_logger;
 
 use std::process;
 
@@ -26,6 +29,10 @@ mod ticker;
 
 // A simple example about how to use the Raft library in Rust.
 fn main() {
+    simple_logger::init().unwrap();
+
+    info!("Sawtooth Raft Engine ({})", env!("CARGO_PKG_VERSION"));
+
     // Create a storage for Raft, and here we just use a simple memory storage.
     // You need to build your own persistent storage in your production.
     // Please check the Storage trait in src/storage.rs to see how to implement one.
@@ -42,8 +49,10 @@ fn main() {
     let endpoint = "tcp://127.0.0.1:5050";
 
     let (driver, _stop) = ZmqDriver::new();
+
+    info!("Connecting to '{}'", endpoint);
     driver.start(endpoint, raft_engine).unwrap_or_else(|err| {
-        eprintln!("{}", err);
+        error!("{}", err);
         process::exit(1);
     });
 }

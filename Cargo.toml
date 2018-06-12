@@ -4,6 +4,8 @@ version = "0.1.0"
 authors = ["Intel Corporation"]
 
 [dependencies]
+log = "0.4"
 protobuf = "2"
 raft = "0.3.0"
 sawtooth_sdk = { git = "https://github.com/hyperledger/sawtooth-core.git" }
+simple_logger = "0.5"
