@@ -22,11 +22,11 @@ extern crate simple_logger;
 
 use std::process;
 
-use raft::RawNode;
 use sawtooth_sdk::consensus::zmq_driver::ZmqDriver;
 
 mod config;
 mod engine;
+mod node;
 mod ticker;
 
 // A simple example about how to use the Raft library in Rust.
@@ -36,18 +36,7 @@ fn main() {
 
     info!("{}", &engine_config.about);
 
-    // Create a storage for Raft, and here we just use a simple memory storage.
-    // You need to build your own persistent storage in your production.
-    // Please check the Storage trait in src/storage.rs to see how to implement one.
-    let storage = config::storage();
-
-    // Create the configuration for the Raft node.
-    let cfg = config::raft_config(engine_config.id);
-
-    // Create the Raft node.
-    let node = RawNode::new(&cfg, storage, vec![]).unwrap();
-
-    let raft_engine = engine::RaftEngine::new(node);
+    let raft_engine = engine::RaftEngine::new(engine_config.id);
 
     let (driver, _stop) = ZmqDriver::new();
 
