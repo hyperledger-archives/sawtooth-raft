@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Intel Corporation"]
 
 [dependencies]
+clap = "2"
 log = "0.4"
 protobuf = "2"
 raft = "0.3.0"

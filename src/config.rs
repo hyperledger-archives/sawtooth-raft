@@ -54,3 +54,30 @@ pub fn raft_config() -> Config {
 pub fn storage() -> MemStorage {
     MemStorage::new()
 }
+
+pub struct RaftEngineConfig {
+    pub about: String,
+    pub endpoint: String,
+}
+
+pub fn engine_config() -> RaftEngineConfig {
+    let about = format!("Sawtooth Raft Engine ({})", env!("CARGO_PKG_VERSION"));
+
+    let matches = clap_app!(sawtooth_raft =>
+        (version: crate_version!())
+        (about: "Raft consensus for Sawtooth")
+        (@arg connect: -C --connect +takes_value
+         "connection endpoint for validator")
+        (@arg verbose: -v --verbose +multiple
+         "increase output verbosity"))
+        .get_matches();
+
+    let endpoint = matches
+        .value_of("connect")
+        .unwrap_or("tcp://localhost:5050");
+
+    RaftEngineConfig {
+        about: about.clone(),
+        endpoint: endpoint.into(),
+    }
+}
