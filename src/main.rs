@@ -42,7 +42,7 @@ fn main() {
     let storage = config::storage();
 
     // Create the configuration for the Raft node.
-    let cfg = config::raft_config();
+    let cfg = config::raft_config(engine_config.id);
 
     // Create the Raft node.
     let node = RawNode::new(&cfg, storage, vec![]).unwrap();
