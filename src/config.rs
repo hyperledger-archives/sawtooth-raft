@@ -21,7 +21,7 @@ use raft::{Config, storage::{MemStorage}};
 
 pub const PUBLISH_PERIOD: Duration = Duration::from_secs(3);
 
-pub fn raft_config(id: u64) -> Config {
+pub fn default_raft_config(id: u64) -> Config {
     let mut config = Config::default();
     config.id = id;
     config.heartbeat_tick = 150;
@@ -33,36 +33,4 @@ pub fn raft_config(id: u64) -> Config {
 
 pub fn storage() -> MemStorage {
     MemStorage::new()
-}
-
-pub struct RaftEngineConfig {
-    pub id: u64,
-    pub about: String,
-    pub endpoint: String,
-}
-
-pub fn engine_config() -> RaftEngineConfig {
-    let about = format!("Sawtooth Raft Engine ({})", env!("CARGO_PKG_VERSION"));
-
-    let matches = clap_app!(sawtooth_raft =>
-        (version: crate_version!())
-        (about: "Raft consensus for Sawtooth")
-        (@arg connect: -C --connect +takes_value
-         "connection endpoint for validator")
-        (@arg verbose: -v --verbose +multiple
-         "increase output verbosity")
-        (@arg ID: +required "the raft node's id"))
-        .get_matches();
-
-    let endpoint = matches
-        .value_of("connect")
-        .unwrap_or("tcp://localhost:5050");
-
-    let id = value_t!(matches.value_of("ID"), u64).unwrap_or_else(|e| e.exit());
-
-    RaftEngineConfig {
-        id: id,
-        about: about.clone(),
-        endpoint: endpoint.into(),
-    }
 }
