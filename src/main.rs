@@ -37,7 +37,8 @@ mod ticker;
 // A simple example about how to use the Raft library in Rust.
 fn main() {
     let args = parse_args();
-    simple_logger::init().unwrap();
+
+    simple_logger::init_with_level(args.log_level).unwrap();
 
     info!("Sawtooth Raft Engine ({})", env!("CARGO_PKG_VERSION"));
 
@@ -63,6 +64,13 @@ fn parse_args() -> RaftCliArgs {
         (@arg ID: +required "the raft node's id"))
         .get_matches();
 
+    let log_level = match matches.occurrences_of("verbose") {
+        0 =>  log::Level::Warn,
+        1 =>  log::Level::Info,
+        2 =>  log::Level::Debug,
+        3 | _ =>  log::Level::Trace,
+    };
+
     let endpoint = matches
         .value_of("connect")
         .unwrap_or("tcp://localhost:5050")
@@ -72,12 +80,14 @@ fn parse_args() -> RaftCliArgs {
         .unwrap_or_else(|e| e.exit());
 
     RaftCliArgs {
+        log_level,
         endpoint,
         id,
     }
 }
 
 pub struct RaftCliArgs {
+    log_level: log::Level,
     endpoint: String,
     id: u64,
 }
