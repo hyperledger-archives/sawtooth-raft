@@ -15,6 +15,7 @@
  * ------------------------------------------------------------------------------
  */
 
+use std::collections::HashMap;
 use std::time::Instant;
 
 use protobuf::{self, Message as ProtobufMessage, ProtobufError};
@@ -29,7 +30,7 @@ use raft::{
 };
 
 use sawtooth_sdk::consensus::{
-    engine::{Block, BlockId, PeerMessage, Error},
+    engine::{Block, BlockId, PeerId, PeerMessage, Error},
     service::Service,
 };
 
@@ -51,19 +52,20 @@ enum LeaderState {
     Committing(BlockId),
 }
 
-// TODO: add peers
 pub struct SawtoothRaftNode {
     raw_node: RawNode<MemStorage>,
     service: Box<Service>,
     leader_state: Option<LeaderState>,
+    raft_id_to_peer_id: HashMap<u64, PeerId>,
 }
 
 impl SawtoothRaftNode {
-    pub fn new(raw_node: RawNode<MemStorage>, service: Box<Service>) -> Self {
+    pub fn new(raw_node: RawNode<MemStorage>, service: Box<Service>, peers: HashMap<PeerId, u64>) -> Self {
         SawtoothRaftNode {
             raw_node,
             service,
             leader_state: None,
+            raft_id_to_peer_id: peers.into_iter().map(|(peer_id, raft_id)| (raft_id, peer_id)).collect(),
         }
     }
 
@@ -144,6 +146,24 @@ impl SawtoothRaftNode {
         }
     }
 
+    fn send_msg(&mut self, raft_msg: &RaftMessage) {
+        let peer_msg = try_into_peer_message(raft_msg)
+            .expect("Failed to convert into peer message");
+        if let Some(peer_id) = self.raft_id_to_peer_id.get(&raft_msg.to) {
+            match self.service.send_to(
+                peer_id,
+                "",
+                peer_msg.content,
+            ) {
+                Ok(_) => (),
+                Err(Error::UnknownPeer(s)) => warn!("Tried to send to disconnected peer: {}", s),
+                Err(err) => panic!("Failed to send to peer: {:?}", err),
+            }
+        } else {
+            warn!("Tried to send to unknown peer: {}", raft_msg.to);
+        }
+    }
+
     pub fn process_ready(&mut self) {
         if !self.raw_node.has_ready() {
             return
@@ -160,11 +180,8 @@ impl SawtoothRaftNode {
                 self.service.initialize_block(None).expect("Failed to initialize block");
             }
             // If the peer is leader, the leader can send messages to other followers ASAP.
-            let msgs = ready.messages.drain(..);
-            for msg in msgs {
-                let _peer_msg = try_into_peer_message(&msg)
-                    .expect("Failed to convert into peer message");
-                // TODO: Send to peer
+            for msg in ready.messages.drain(..) {
+                self.send_msg(&msg);
             }
         }
 
@@ -201,11 +218,7 @@ impl SawtoothRaftNode {
             // the leader after appending Raft entries.
             let msgs = ready.messages.drain(..);
             for msg in msgs {
-                // Send messages to other peers.
-                let peer_msg = try_into_peer_message(&msg)
-                    .expect("Failed to convert into peer message");
-                self.service.send_to()
-                // TODO: Send to peer
+                self.send_msg(&msg);
             }
         }
 

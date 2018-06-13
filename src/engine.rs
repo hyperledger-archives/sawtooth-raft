@@ -62,12 +62,12 @@ impl Engine for RaftEngine {
         let storage = config::storage();
 
         // Create the configuration for the Raft node.
-        let (cfg, _peers) = self.load_raft_config(chain_head.block_id, &mut service);
+        let (cfg, peers) = self.load_raft_config(chain_head.block_id, &mut service);
 
         // Create the Raft node.
         let raw_node = RawNode::new(&cfg, storage, vec![]).unwrap();
 
-        let mut node = SawtoothRaftNode::new(raw_node, service);
+        let mut node = SawtoothRaftNode::new(raw_node, service, peers);
 
         let raft_timeout = RAFT_TIMEOUT;
         let mut raft_ticker = ticker::Ticker::new(raft_timeout);
