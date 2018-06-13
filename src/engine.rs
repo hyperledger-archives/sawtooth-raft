@@ -15,7 +15,6 @@
  * ------------------------------------------------------------------------------
  */
 
-use std::cmp;
 use std::collections::HashMap;
 use std::time::Duration;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
@@ -68,18 +67,11 @@ impl Engine for RaftEngine {
         // Create the Raft node.
         let raw_node = RawNode::new(&cfg, storage, vec![]).unwrap();
 
-        trace!("Initializing first block");
-        service.initialize_block(None).expect("Initialize block failed");
-
         let mut node = SawtoothRaftNode::new(raw_node, service);
 
         let raft_timeout = RAFT_TIMEOUT;
-        let publish_timeout = config::PUBLISH_PERIOD;
-
         let mut raft_ticker = ticker::Ticker::new(raft_timeout);
-        let mut publish_ticker = ticker::Ticker::new(publish_timeout);
-
-        let mut timeout = cmp::min(raft_timeout, publish_timeout);
+        let mut timeout = raft_timeout;
 
         // Loop forever to drive the Raft.
         loop {
@@ -93,16 +85,13 @@ impl Engine for RaftEngine {
                 Ok(Update::PeerMessage(message, _id)) => node.on_peer_message(message),
                 Err(RecvTimeoutError::Timeout) => (),
                 Err(RecvTimeoutError::Disconnected) => return,
+                // TODO: Handle invalid, peer update
                 _ => unimplemented!(),
             }
 
-            let raft_timeout = raft_ticker.tick(|| {
+            timeout = raft_ticker.tick(|| {
                 node.tick();
             });
-            let publish_timeout = publish_ticker.tick(|| {
-                node.propose_block()
-            });
-            timeout = cmp::min(raft_timeout, publish_timeout);
 
             node.process_ready();
         }
