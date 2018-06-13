@@ -83,6 +83,7 @@ impl Engine for RaftEngine {
                 Ok(Update::BlockCommit(block_id)) => node.on_block_commit(block_id),
                 // This is a consensus message that should be passed to the node
                 Ok(Update::PeerMessage(message, _id)) => node.on_peer_message(message),
+                Ok(Update::Shutdown) => return,
                 Err(RecvTimeoutError::Timeout) => (),
                 Err(RecvTimeoutError::Disconnected) => return,
                 // TODO: Handle invalid, peer update
