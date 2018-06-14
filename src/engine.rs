@@ -99,10 +99,10 @@ impl Engine for RaftEngine {
     }
 
     fn version(&self) -> String {
-        "0.1".into()
+        env!("CARGO_PKG_VERSION").into()
     }
 
     fn name(&self) -> String {
-        "Raft".into()
+        env!("CARGO_PKG_NAME").into()
     }
 }
