@@ -15,22 +15,20 @@
  * ------------------------------------------------------------------------------
  */
 
-use std::collections::HashMap;
 use std::time::Duration;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 
 use raft::{
-    Config as RaftConfig,
     raw_node::RawNode,
+    Peer as RaftPeer,
 };
-use serde_json;
 
 use sawtooth_sdk::consensus::{
-    engine::{Block, BlockId, PeerInfo, PeerId, Engine, Update},
+    engine::{Block, PeerInfo, Engine, Update},
     service::Service,
 };
 
-use config;
+use config::{self, RaftEngineConfig};
 use ticker;
 use node::SawtoothRaftNode;
 
@@ -56,18 +54,22 @@ impl Engine for RaftEngine {
         _peers: Vec<PeerInfo>,
     ) {
 
-        // Create a storage for Raft, and here we just use a simple memory storage.
-        // You need to build your own persistent storage in your production.
-        // Please check the Storage trait in src/storage.rs to see how to implement one.
-        let storage = config::storage();
-
         // Create the configuration for the Raft node.
-        let (cfg, peers) = self.load_raft_config(chain_head.block_id, &mut service);
+        let RaftEngineConfig {
+            peers,
+            period,
+            raft: raft_config,
+            storage: raft_storage
+        } = config::load_raft_config(self.id, chain_head.block_id, &mut service);
 
+        let raft_peers: Vec<RaftPeer> = peers
+            .values()
+            .map(|id| RaftPeer { id: *id, context: None })
+            .collect();
         // Create the Raft node.
-        let raw_node = RawNode::new(&cfg, storage, vec![]).unwrap();
+        let raw_node = RawNode::new(&raft_config, raft_storage, raft_peers).unwrap();
 
-        let mut node = SawtoothRaftNode::new(raw_node, service, peers);
+        let mut node = SawtoothRaftNode::new(raw_node, service, peers, period);
 
         let raft_timeout = RAFT_TIMEOUT;
         let mut raft_ticker = ticker::Ticker::new(raft_timeout);
@@ -77,11 +79,9 @@ impl Engine for RaftEngine {
         loop {
             trace!("Top of main loop");
             match updates.recv_timeout(timeout) {
-                // Propose is the equivalent of publish block
                 Ok(Update::BlockNew(block)) => node.on_block_new(block),
                 Ok(Update::BlockValid(block_id)) => node.on_block_valid(block_id),
                 Ok(Update::BlockCommit(block_id)) => node.on_block_commit(block_id),
-                // This is a consensus message that should be passed to the node
                 Ok(Update::PeerMessage(message, _id)) => node.on_peer_message(message),
                 Ok(Update::Shutdown) => return,
                 Err(RecvTimeoutError::Timeout) => (),
@@ -104,52 +104,5 @@ impl Engine for RaftEngine {
 
     fn name(&self) -> String {
         "Raft".into()
-    }
-}
-
-impl RaftEngine {
-    fn load_raft_config(&self, block_id: BlockId, service: &mut Box<Service>) -> (RaftConfig, HashMap<PeerId, u64>) {
-        let mut default_config = config::default_raft_config(self.id);
-
-        let settings_keys = vec![
-            "sawtooth.consensus.raft.peers",
-            "sawtooth.consensus.raft.heartbeat_tick",
-            "sawtooth.consensus.raft.election_tick",
-        ];
-
-        let settings: HashMap<String, String> = service
-            .get_settings(block_id, settings_keys.into_iter().map(String::from).collect())
-            .expect("Failed to get settings keys");
-
-        if let Some(heartbeat_tick) = settings.get("sawtooth.consensus.raft.heartbeat_tick") {
-            let parsed: Result<usize, _> = heartbeat_tick.parse();
-            if let Ok(tick) = parsed {
-                default_config.heartbeat_tick = tick;
-            }
-        }
-
-        if let Some(election_tick) = settings.get("sawtooth.consensus.raft.election_tick") {
-            let parsed: Result<usize, _> = election_tick.parse();
-            if let Ok(tick) = parsed {
-                default_config.election_tick = tick;
-            }
-        }
-
-        let peers_setting_value = settings
-            .get("sawtooth.consensus.raft.peers")
-            .expect("'sawtooth.consensus.raft.peers' must be set to use Raft");
-
-        let peers: HashMap<String, u64> = serde_json::from_str(peers_setting_value)
-            .expect("Invalid value at 'sawtooth.consensus.raft.peers'");
-
-        let peers: HashMap<PeerId, u64> = peers
-            .into_iter()
-            .map(|(s, id)| (PeerId::from(Vec::from(s)), id))
-            .collect();
-
-        let ids: Vec<u64> = peers.values().cloned().collect();
-        default_config.peers = ids;
-
-        (default_config, peers)
     }
 }

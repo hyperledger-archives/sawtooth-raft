@@ -15,25 +15,98 @@
  * ------------------------------------------------------------------------------
  */
 
+use std::collections::HashMap;
 use std::time::Duration;
 
-use raft::{Config, storage::{MemStorage}};
+use raft::{
+    Config as RaftConfig,
+    storage::{MemStorage},
+};
+use sawtooth_sdk::consensus::{engine::{BlockId, PeerId}, service::Service};
+use serde_json;
 
-pub const PUBLISH_PERIOD: Duration = Duration::from_secs(3);
-
-pub fn default_raft_config(id: u64) -> Config {
-    let mut config = Config::default();
-    config.id = id;
-
-    // TODO: Peers needs to be empty if rejoining, populated if new network
-    config.peers.push(id);
-    config.election_tick = 10;
-    config.heartbeat_tick = 3;
-    config.max_inflight_msgs = 256;
-    config.validate().expect("Invalid Raft Config");
-    config
+pub struct RaftEngineConfig {
+    pub peers: HashMap<PeerId, u64>,
+    // TODO: Find a better name for this
+    pub period: Duration,
+    pub raft: RaftConfig,
+    pub storage: MemStorage,
 }
 
-pub fn storage() -> MemStorage {
-    MemStorage::new()
+impl Default for RaftEngineConfig {
+    fn default() -> Self {
+        let mut raft = RaftConfig::default();
+        raft.election_tick = 10;
+        raft.heartbeat_tick = 3;
+        raft.max_inflight_msgs = 256;
+
+        // TODO: Implement persistent storage
+        RaftEngineConfig {
+            peers: HashMap::new(),
+            period: Duration::from_millis(3_000),
+            raft,
+            storage: MemStorage::new(),
+        }
+    }
+}
+
+pub fn load_raft_config(
+    raft_id: u64,
+    block_id: BlockId,
+    service: &mut Box<Service>,
+) -> RaftEngineConfig {
+
+    let mut config = RaftEngineConfig::default();
+    config.raft.id = raft_id;
+
+    let settings_keys = vec![
+        "sawtooth.consensus.raft.peers",
+        "sawtooth.consensus.raft.heartbeat_tick",
+        "sawtooth.consensus.raft.election_tick",
+        "sawtooth.consensus.raft.period",
+    ];
+
+    let settings: HashMap<String, String> = service
+        .get_settings(block_id, settings_keys.into_iter().map(String::from).collect())
+        .expect("Failed to get settings keys");
+
+    if let Some(heartbeat_tick) = settings.get("sawtooth.consensus.raft.heartbeat_tick") {
+        let parsed: Result<usize, _> = heartbeat_tick.parse();
+        if let Ok(tick) = parsed {
+            config.raft.heartbeat_tick = tick;
+        }
+    }
+
+    if let Some(election_tick) = settings.get("sawtooth.consensus.raft.election_tick") {
+        let parsed: Result<usize, _> = election_tick.parse();
+        if let Ok(tick) = parsed {
+            config.raft.election_tick = tick;
+        }
+    }
+
+    if let Some(period) = settings.get("sawtooth.consensus.raft.period") {
+        let parsed: Result<u64, _> = period.parse();
+        if let Ok(period) = parsed {
+            config.period = Duration::from_millis(period);
+        }
+    }
+
+    let peers_setting_value = settings
+        .get("sawtooth.consensus.raft.peers")
+        .expect("'sawtooth.consensus.raft.peers' must be set to use Raft");
+
+    let peers: HashMap<String, u64> = serde_json::from_str(peers_setting_value)
+        .expect("Invalid value at 'sawtooth.consensus.raft.peers'");
+
+    let peers: HashMap<PeerId, u64> = peers
+        .into_iter()
+        .map(|(s, id)| (PeerId::from(Vec::from(s)), id))
+        .collect();
+
+    let ids: Vec<u64> = peers.values().cloned().collect();
+
+    config.peers = peers;
+    config.raft.peers = ids;
+
+    config
 }

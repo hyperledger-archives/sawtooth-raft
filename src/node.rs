@@ -16,7 +16,7 @@
  */
 
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use protobuf::{self, Message as ProtobufMessage, ProtobufError};
 use raft::{
@@ -33,8 +33,6 @@ use sawtooth_sdk::consensus::{
     engine::{Block, BlockId, PeerId, PeerMessage, Error},
     service::Service,
 };
-
-use config;
 
 /// Possible states a leader node can be in
 ///
@@ -57,15 +55,22 @@ pub struct SawtoothRaftNode {
     service: Box<Service>,
     leader_state: Option<LeaderState>,
     raft_id_to_peer_id: HashMap<u64, PeerId>,
+    period: Duration,
 }
 
 impl SawtoothRaftNode {
-    pub fn new(raw_node: RawNode<MemStorage>, service: Box<Service>, peers: HashMap<PeerId, u64>) -> Self {
+    pub fn new(
+        raw_node: RawNode<MemStorage>,
+        service: Box<Service>,
+        peers: HashMap<PeerId, u64>,
+        period: Duration
+    ) -> Self {
         SawtoothRaftNode {
             raw_node,
             service,
             leader_state: None,
             raft_id_to_peer_id: peers.into_iter().map(|(peer_id, raft_id)| (raft_id, peer_id)).collect(),
+            period,
         }
     }
 
@@ -134,7 +139,7 @@ impl SawtoothRaftNode {
         // 3. The block has been building long enough
         if match self.leader_state {
             Some(LeaderState::Building(instant)) => {
-                instant.elapsed() >= config::PUBLISH_PERIOD
+                instant.elapsed() >= self.period
             }
             _ => false,
         } {
