@@ -17,6 +17,7 @@
 
 #[macro_use]
 extern crate clap;
+extern crate hex;
 #[macro_use]
 extern crate log;
 extern crate protobuf;

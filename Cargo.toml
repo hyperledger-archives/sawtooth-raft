@@ -5,6 +5,7 @@ authors = ["Intel Corporation"]
 
 [dependencies]
 clap = "2"
+hex = "0.3"
 log = "0.4"
 protobuf = "2"
 raft = "0.3.0"

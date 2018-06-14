@@ -18,6 +18,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use hex;
 use raft::{
     Config as RaftConfig,
     storage::{MemStorage},
@@ -100,7 +101,7 @@ pub fn load_raft_config(
 
     let peers: HashMap<PeerId, u64> = peers
         .into_iter()
-        .map(|(s, id)| (PeerId::from(Vec::from(s)), id))
+        .map(|(s, id)| (PeerId::from(hex::decode(s).expect("Peer id not valid hex")), id))
         .collect();
 
     let ids: Vec<u64> = peers.values().cloned().collect();
