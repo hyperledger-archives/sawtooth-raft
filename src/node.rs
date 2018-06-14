@@ -51,6 +51,7 @@ enum LeaderState {
 }
 
 pub struct SawtoothRaftNode {
+    id: u64,
     raw_node: RawNode<MemStorage>,
     service: Box<Service>,
     leader_state: Option<LeaderState>,
@@ -60,12 +61,14 @@ pub struct SawtoothRaftNode {
 
 impl SawtoothRaftNode {
     pub fn new(
+        id: u64,
         raw_node: RawNode<MemStorage>,
         service: Box<Service>,
         peers: HashMap<PeerId, u64>,
         period: Duration
     ) -> Self {
         SawtoothRaftNode {
+            id,
             raw_node,
             service,
             leader_state: None,
@@ -75,14 +78,13 @@ impl SawtoothRaftNode {
     }
 
     pub fn on_block_new(&mut self, block: Block) {
-        trace!("Received new block: {:?}", block);
-
         if match self.leader_state {
             Some(LeaderState::Publishing(ref block_id)) => {
                 block_id == &block.block_id
             },
             _ => false,
         } {
+            debug!("Leader({}) transition to Validating block {:?}", self.id, block.block_id);
             self.leader_state = Some(LeaderState::Validating(block.block_id.clone()));
         }
 
@@ -91,7 +93,6 @@ impl SawtoothRaftNode {
     }
 
     pub fn on_block_valid(&mut self, block_id: BlockId) {
-        trace!("Block would commit: {:?}", block_id);
         // Handle out of order new/valid updates
         if match self.leader_state {
             Some(LeaderState::Publishing(ref expected)) => {
@@ -102,22 +103,25 @@ impl SawtoothRaftNode {
             },
             _ => false,
         } {
+            debug!("Leader({}) transition to Proposing block {:?}", self.id, block_id);
+            info!("Leader({}) proposed block {:?}", self.id, block_id);
             self.raw_node.propose(vec![], block_id.clone().into()).expect("Failed to propose block to Raft");
             self.leader_state = Some(LeaderState::Proposing(block_id));
         }
     }
 
     pub fn on_block_commit(&mut self, block_id: BlockId) {
-        trace!("Block committed: {:?}", block_id);
         if match self.leader_state {
             Some(LeaderState::Committing(ref committing)) => {
                 committing == &block_id
             },
             _ => false,
         } {
+            debug!("Leader({}) transition to Building block {:?}", self.id, block_id);
             self.leader_state = Some(LeaderState::Building(Instant::now()));
             self.service.initialize_block(None).expect("Failed to initialize block");
         }
+        info!("Peer({}) committed block {:?}", self.id, block_id);
     }
 
     pub fn on_peer_message(&mut self, message: PeerMessage) {
@@ -144,8 +148,14 @@ impl SawtoothRaftNode {
             _ => false,
         } {
             match self.service.finalize_block(vec![]) {
-                Ok(block_id) => self.leader_state = Some(LeaderState::Publishing(block_id)),
-                Err(Error::BlockNotReady) => (), // Try again later
+                Ok(block_id) => {
+                    debug!("Leader({}) transition to Publishing block {:?}", self.id, block_id);
+                    self.leader_state = Some(LeaderState::Publishing(block_id));
+                },
+                Err(Error::BlockNotReady) => {
+                     // Try again later
+                    debug!("Leader({}) tried to finalize block but block not read", self.id);
+                },
                 Err(err) => panic!("Failed to finalize block: {:?}", err),
             };
         }
@@ -181,11 +191,13 @@ impl SawtoothRaftNode {
         if is_leader {
             // We just became the leader, so we need to start building a block
             if self.leader_state.is_none() {
+                debug!("Leader({}) became leader, intializing block", self.id);
                 self.leader_state = Some(LeaderState::Building(Instant::now()));
                 self.service.initialize_block(None).expect("Failed to initialize block");
             }
             // If the peer is leader, the leader can send messages to other followers ASAP.
             for msg in ready.messages.drain(..) {
+                debug!("Leader({}) wants to send message to {}", self.id, msg.to);
                 self.send_msg(&msg);
             }
         }
@@ -213,8 +225,10 @@ impl SawtoothRaftNode {
             if self.leader_state.is_some() {
                 // If we were building a block, cancel it
                 match self.leader_state {
-                    Some(LeaderState::Building(_)) =>
-                        self.service.cancel_block().expect("Failed to cancel block"),
+                    Some(LeaderState::Building(_)) => {
+                        debug!("Leader({}) stepped down, cancelling block", self.id);
+                        self.service.cancel_block().expect("Failed to cancel block");
+                    }
                     _ => (),
                 }
                 self.leader_state = None;
@@ -223,6 +237,7 @@ impl SawtoothRaftNode {
             // the leader after appending Raft entries.
             let msgs = ready.messages.drain(..);
             for msg in msgs {
+                debug!("Peer({}) wants to send message to {}", self.id, msg.to);
                 self.send_msg(&msg);
             }
         }
@@ -243,17 +258,18 @@ impl SawtoothRaftNode {
                     // TODO: This usage of Raft only proposes one block at a time. Performance
                     // could be improved by optimistically proposing blocks before parents are
                     // committed.
-                    trace!("Entry committed: {:?}", entry);
                     let block_id: BlockId = BlockId::from(Vec::from(entry.get_data()));
+                    debug!("Peer({}) committing block {:?}", self.id, block_id);
                     if match self.leader_state {
                         Some(LeaderState::Proposing(ref proposed)) => {
                             &block_id == proposed
                         },
                         _ => false,
                     } {
-                        self.service.commit_block(block_id.clone()).expect("Failed to commit block");
-                        self.leader_state = Some(LeaderState::Committing(block_id));
+                        debug!("Leader({}) transitioning to Committing block {:?}", self.id, block_id);
+                        self.leader_state = Some(LeaderState::Committing(block_id.clone()));
                     }
+                    self.service.commit_block(block_id.clone()).expect("Failed to commit block");
                 }
 
                 // TODO: handle EntryConfChange

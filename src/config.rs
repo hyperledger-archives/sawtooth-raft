@@ -16,6 +16,7 @@
  */
 
 use std::collections::HashMap;
+use std::fmt;
 use std::time::Duration;
 
 use hex;
@@ -48,6 +49,19 @@ impl Default for RaftEngineConfig {
             raft,
             storage: MemStorage::new(),
         }
+    }
+}
+
+impl fmt::Debug for RaftEngineConfig {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "RaftEngineConfig {{ peers: {:?}, period: {:?}, raft: {{ election_tick: {}, heartbeat_tick: {} }}, storage: MemStorage }}",
+            self.peers,
+            self.period,
+            self.raft.election_tick,
+            self.raft.heartbeat_tick,
+        )
     }
 }
 

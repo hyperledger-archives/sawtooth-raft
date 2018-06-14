@@ -55,39 +55,38 @@ impl Engine for RaftEngine {
     ) {
 
         // Create the configuration for the Raft node.
+        let cfg = config::load_raft_config(self.id, chain_head.block_id, &mut service);
+        info!("Raft Engine Config Loaded: {:?}", cfg);
         let RaftEngineConfig {
             peers,
             period,
             raft: raft_config,
             storage: raft_storage
-        } = config::load_raft_config(self.id, chain_head.block_id, &mut service);
+        } = cfg;
 
+        // Create the Raft node.
         let raft_peers: Vec<RaftPeer> = peers
             .values()
             .map(|id| RaftPeer { id: *id, context: None })
             .collect();
-        // Create the Raft node.
         let raw_node = RawNode::new(&raft_config, raft_storage, raft_peers).unwrap();
 
-        let mut node = SawtoothRaftNode::new(raw_node, service, peers, period);
+        let mut node = SawtoothRaftNode::new(self.id, raw_node, service, peers, period);
 
-        let raft_timeout = RAFT_TIMEOUT;
-        let mut raft_ticker = ticker::Ticker::new(raft_timeout);
-        let mut timeout = raft_timeout;
+        let mut raft_ticker = ticker::Ticker::new(RAFT_TIMEOUT);
+        let mut timeout = RAFT_TIMEOUT;
 
         // Loop forever to drive the Raft.
         loop {
-            trace!("Top of main loop");
             match updates.recv_timeout(timeout) {
-                Ok(Update::BlockNew(block)) => node.on_block_new(block),
-                Ok(Update::BlockValid(block_id)) => node.on_block_valid(block_id),
-                Ok(Update::BlockCommit(block_id)) => node.on_block_commit(block_id),
-                Ok(Update::PeerMessage(message, _id)) => node.on_peer_message(message),
-                Ok(Update::Shutdown) => return,
                 Err(RecvTimeoutError::Timeout) => (),
-                Err(RecvTimeoutError::Disconnected) => return,
-                // TODO: Handle invalid, peer update
-                _ => unimplemented!(),
+                Err(RecvTimeoutError::Disconnected) => break,
+                Ok(update) => {
+                    debug!("Update: {:?}", update);
+                    if !handle_update(&mut node, update) {
+                        break;
+                    }
+                }
             }
 
             timeout = raft_ticker.tick(|| {
@@ -105,4 +104,19 @@ impl Engine for RaftEngine {
     fn name(&self) -> String {
         env!("CARGO_PKG_NAME").into()
     }
+}
+
+// Returns whether the engine should continue
+fn handle_update(node: &mut SawtoothRaftNode, update: Update) -> bool {
+    match update {
+        Update::BlockNew(block) => node.on_block_new(block),
+        Update::BlockValid(block_id) => node.on_block_valid(block_id),
+        Update::BlockCommit(block_id) => node.on_block_commit(block_id),
+        Update::PeerMessage(message, _id) => node.on_peer_message(message),
+        Update::Shutdown => return false,
+
+        // TODO: Handle invalid, peer update
+        update => warn!("Unhandled update: {:?}", update),
+    }
+    true
 }

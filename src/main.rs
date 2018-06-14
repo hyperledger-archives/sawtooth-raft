@@ -35,7 +35,6 @@ mod engine;
 mod node;
 mod ticker;
 
-// A simple example about how to use the Raft library in Rust.
 fn main() {
     let args = parse_args();
 
@@ -47,7 +46,7 @@ fn main() {
 
     let (driver, _stop) = ZmqDriver::new();
 
-    info!("Connecting to '{}'", &args.endpoint);
+    info!("Raft Node {} connecting to '{}'", &args.id, &args.endpoint);
     driver.start(&args.endpoint, raft_engine).unwrap_or_else(|err| {
         error!("{}", err);
         process::exit(1);
