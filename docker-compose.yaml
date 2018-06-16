@@ -1,0 +1,13 @@
+version: '3.6'
+
+volumes:
+  cargo-registry:
+
+services:
+  raft-engine:
+    image: sawtooth-raft$INSTALL_TYPE:$ISOLATION_ID
+    build:
+      context: .
+    volumes:
+      - ./:/project/sawtooth-raft
+      - cargo-registry:/root/.cargo/registry
