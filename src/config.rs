@@ -30,7 +30,7 @@ use serde_json;
 use storage::StorageExt;
 
 pub struct RaftEngineConfig<S: StorageExt> {
-    pub peers: HashMap<PeerId, u64>,
+    pub peers: Vec<PeerId>,
     pub period: Duration,
     pub raft: RaftConfig,
     pub storage: S,
@@ -47,7 +47,7 @@ impl<S: StorageExt> RaftEngineConfig<S> {
         raft.tag = format!("[{}]", 1);
 
         RaftEngineConfig {
-            peers: HashMap::new(),
+            peers: Vec::new(),
             period: Duration::from_millis(3_000),
             raft,
             storage,
@@ -73,13 +73,13 @@ impl<S: StorageExt> fmt::Debug for RaftEngineConfig<S> {
 }
 
 pub fn load_raft_config(
-    raft_id: u64,
+    peer_id: &PeerId,
     block_id: BlockId,
     service: &mut Box<Service>,
 ) -> RaftEngineConfig<impl StorageExt> {
 
     let mut config = RaftEngineConfig::new(create_storage());
-    config.raft.id = raft_id;
+    config.raft.id = peer_id_to_raft_id(peer_id);
 
     let settings_keys = vec![
         "sawtooth.consensus.raft.peers",
@@ -117,18 +117,29 @@ pub fn load_raft_config(
         .get("sawtooth.consensus.raft.peers")
         .expect("'sawtooth.consensus.raft.peers' must be set to use Raft");
 
-    let peers: HashMap<String, u64> = serde_json::from_str(peers_setting_value)
+    let peers: Vec<String> = serde_json::from_str(peers_setting_value)
         .expect("Invalid value at 'sawtooth.consensus.raft.peers'");
 
-    let peers: HashMap<PeerId, u64> = peers
+    let peers: Vec<PeerId> = peers
         .into_iter()
-        .map(|(s, id)| (PeerId::from(hex::decode(s).expect("Peer id not valid hex")), id))
+        .map(|s| PeerId::from(hex::decode(s).expect("Peer id not valid hex")))
         .collect();
 
-    let ids: Vec<u64> = peers.values().cloned().collect();
+    let ids: Vec<u64> = peers.iter().map(peer_id_to_raft_id).collect();
 
     config.peers = peers;
     config.raft.peers = ids;
 
     config
+}
+
+/// Create a u64 value from the last eight bytes in the peer id
+pub fn peer_id_to_raft_id(peer_id: &PeerId) -> u64 {
+    let bytes: &[u8] = peer_id.as_ref();
+    assert!(bytes.len() >= 8);
+    let mut u: u64 = 0;
+    for i in 0..8 {
+        u += (u64::from(bytes[bytes.len() - 1 - i])) << (i * 8)
+    }
+    u
 }

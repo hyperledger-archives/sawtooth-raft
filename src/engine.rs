@@ -34,13 +34,11 @@ use node::SawtoothRaftNode;
 use storage::StorageExt;
 
 
-pub struct RaftEngine {
-    id: u64,
-}
+pub struct RaftEngine {}
 
 impl RaftEngine {
-    pub fn new(id: u64) -> Self {
-        RaftEngine { id }
+    pub fn new() -> Self {
+        RaftEngine {}
     }
 }
 
@@ -52,14 +50,19 @@ impl Engine for RaftEngine {
         updates: Receiver<Update>,
         mut service: Box<Service>,
         startup_state: StartupState,
-     ) {
+    ) {
         let StartupState {
             chain_head,
+            local_peer_info,
             ..
         } = startup_state;
 
         // Create the configuration for the Raft node.
-        let cfg = config::load_raft_config(self.id, chain_head.block_id, &mut service);
+        let cfg = config::load_raft_config(
+            &local_peer_info.peer_id,
+            chain_head.block_id,
+            &mut service
+        );
         info!("Raft Engine Config Loaded: {:?}", cfg);
         let RaftEngineConfig {
             peers,
@@ -69,13 +72,19 @@ impl Engine for RaftEngine {
         } = cfg;
 
         // Create the Raft node.
-        let raft_peers: Vec<RaftPeer> = peers
-            .values()
+        let raft_peers: Vec<RaftPeer> = raft_config.peers
+            .iter()
             .map(|id| RaftPeer { id: *id, context: None })
             .collect();
         let raw_node = RawNode::new(&raft_config, raft_storage, raft_peers).unwrap();
 
-        let mut node = SawtoothRaftNode::new(self.id, raw_node, service, peers, period);
+        let mut node = SawtoothRaftNode::new(
+            local_peer_info.peer_id,
+            raw_node,
+            service,
+            peers,
+            period
+        );
 
         let mut raft_ticker = ticker::Ticker::new(RAFT_TIMEOUT);
         let mut timeout = RAFT_TIMEOUT;
