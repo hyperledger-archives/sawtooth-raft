@@ -1,0 +1,16 @@
+version: '3.6'
+
+volumes:
+  cargo-registry:
+
+services:
+  raft-engine:
+    image: sawtooth-raft-installed:$ISOLATION_ID
+    build:
+      context: .
+    volumes:
+      - .:/build/debs
+    command: |
+      bash -c "
+        cp /tmp/*.deb /build/debs
+      "
