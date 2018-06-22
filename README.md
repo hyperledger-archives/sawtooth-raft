@@ -63,6 +63,12 @@ a mapping of each node's public key to each node's raft id.
 
 ## Future Improvements
 
+[ ] Stability Improvements
+
+    Handle all updates :invalid block, peer connected, and peer disconnected.
+    Only bother checking blocks in Update::BlockNew that we expected to get
+    based on consensus (ie., don't check unexpected blocks).
+
 [ ] Persistent Storage
 
     Replace the memory-backed storage implementation with a persistent storage

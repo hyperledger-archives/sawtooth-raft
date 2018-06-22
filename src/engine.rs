@@ -115,7 +115,6 @@ fn handle_update(node: &mut SawtoothRaftNode, update: Update) -> bool {
         Update::PeerMessage(message, _id) => node.on_peer_message(message),
         Update::Shutdown => return false,
 
-        // TODO: Handle invalid, peer update
         update => warn!("Unhandled update: {:?}", update),
     }
     true

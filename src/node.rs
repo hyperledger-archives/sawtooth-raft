@@ -88,7 +88,6 @@ impl SawtoothRaftNode {
             self.leader_state = Some(LeaderState::Validating(block.block_id.clone()));
         }
 
-        // TODO: Only check blocks that we expect to get
         self.service.check_blocks(vec![block.block_id]).expect("Failed to send check blocks");
     }
 
@@ -255,9 +254,6 @@ impl SawtoothRaftNode {
                 }
 
                 if entry.get_entry_type() == EntryType::EntryNormal {
-                    // TODO: This usage of Raft only proposes one block at a time. Performance
-                    // could be improved by optimistically proposing blocks before parents are
-                    // committed.
                     let block_id: BlockId = BlockId::from(Vec::from(entry.get_data()));
                     debug!("Peer({}) committing block {:?}", self.id, block_id);
                     if match self.leader_state {
@@ -271,8 +267,6 @@ impl SawtoothRaftNode {
                     }
                     self.service.commit_block(block_id.clone()).expect("Failed to commit block");
                 }
-
-                // TODO: handle EntryConfChange
             }
         }
 

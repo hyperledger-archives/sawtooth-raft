@@ -29,7 +29,6 @@ use serde_json;
 
 pub struct RaftEngineConfig {
     pub peers: HashMap<PeerId, u64>,
-    // TODO: Find a better name for this
     pub period: Duration,
     pub raft: RaftConfig,
     pub storage: MemStorage,
@@ -42,7 +41,6 @@ impl Default for RaftEngineConfig {
         raft.heartbeat_tick = 3;
         raft.max_inflight_msgs = 256;
 
-        // TODO: Implement persistent storage
         RaftEngineConfig {
             peers: HashMap::new(),
             period: Duration::from_millis(3_000),
