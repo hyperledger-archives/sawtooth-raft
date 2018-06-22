@@ -249,7 +249,7 @@ impl SawtoothRaftNode {
                 _last_apply_index = entry.get_index();
 
                 if entry.get_data().is_empty() {
-                    // Emtpy entry, when the peer becomes Leader it will send an empty entry.
+                    // When the peer becomes Leader it will send an empty entry.
                     continue;
                 }
 
