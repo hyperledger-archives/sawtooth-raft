@@ -27,15 +27,17 @@ use raft::{
 use sawtooth_sdk::consensus::{engine::{BlockId, PeerId}, service::Service};
 use serde_json;
 
-pub struct RaftEngineConfig {
+use storage::StorageExt;
+
+pub struct RaftEngineConfig<S: StorageExt> {
     pub peers: HashMap<PeerId, u64>,
     pub period: Duration,
     pub raft: RaftConfig,
-    pub storage: MemStorage,
+    pub storage: S,
 }
 
-impl Default for RaftEngineConfig {
-    fn default() -> Self {
+impl<S: StorageExt> RaftEngineConfig<S> {
+    fn new(storage: S) -> Self {
         let mut raft = RaftConfig::default();
         raft.election_tick = 10;
         raft.heartbeat_tick = 3;
@@ -48,12 +50,16 @@ impl Default for RaftEngineConfig {
             peers: HashMap::new(),
             period: Duration::from_millis(3_000),
             raft,
-            storage: MemStorage::new(),
+            storage,
         }
     }
 }
 
-impl fmt::Debug for RaftEngineConfig {
+fn create_storage() -> MemStorage {
+    MemStorage::new()
+}
+
+impl<S: StorageExt> fmt::Debug for RaftEngineConfig<S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -70,9 +76,9 @@ pub fn load_raft_config(
     raft_id: u64,
     block_id: BlockId,
     service: &mut Box<Service>,
-) -> RaftEngineConfig {
+) -> RaftEngineConfig<impl StorageExt> {
 
-    let mut config = RaftEngineConfig::default();
+    let mut config = RaftEngineConfig::new(create_storage());
     config.raft.id = raft_id;
 
     let settings_keys = vec![
