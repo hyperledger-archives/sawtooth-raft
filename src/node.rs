@@ -50,11 +50,17 @@ enum LeaderState {
     Committing(BlockId),
 }
 
+enum FollowerState {
+    Idle,
+    Committing(BlockId),
+}
+
 pub struct SawtoothRaftNode {
     id: u64,
     raw_node: RawNode<MemStorage>,
     service: Box<Service>,
     leader_state: Option<LeaderState>,
+    follower_state: Option<FollowerState>,
     raft_id_to_peer_id: HashMap<u64, PeerId>,
     period: Duration,
 }
@@ -72,6 +78,7 @@ impl SawtoothRaftNode {
             raw_node,
             service,
             leader_state: None,
+            follower_state: Some(FollowerState::Idle),
             raft_id_to_peer_id: peers.into_iter().map(|(peer_id, raft_id)| (raft_id, peer_id)).collect(),
             period,
         }
@@ -106,6 +113,15 @@ impl SawtoothRaftNode {
             info!("Leader({}) proposed block {:?}", self.id, block_id);
             self.raw_node.propose(vec![], block_id.clone().into()).expect("Failed to propose block to Raft");
             self.leader_state = Some(LeaderState::Proposing(block_id));
+        } else if match self.follower_state {
+            Some(FollowerState::Committing(ref expected)) => {
+                expected == &block_id
+            },
+            _ => false,
+        } {
+            debug!("Follower({}) committing saved block {:?}", self.id, block_id);
+            self.service.commit_block(block_id.clone()).expect("Failed to commit block");
+            self.follower_state = Some(FollowerState::Idle);
         }
     }
 
@@ -191,6 +207,7 @@ impl SawtoothRaftNode {
             // We just became the leader, so we need to start building a block
             if self.leader_state.is_none() {
                 debug!("Leader({}) became leader, intializing block", self.id);
+                self.follower_state = None;
                 self.leader_state = Some(LeaderState::Building(Instant::now()));
                 self.service.initialize_block(None).expect("Failed to initialize block");
             }
@@ -228,9 +245,15 @@ impl SawtoothRaftNode {
                         debug!("Leader({}) stepped down, cancelling block", self.id);
                         self.service.cancel_block().expect("Failed to cancel block");
                     }
+                    Some(LeaderState::Committing(ref block_id)) => {
+                        self.follower_state = Some(FollowerState::Committing(block_id.clone()));
+                    }
                     _ => (),
                 }
                 self.leader_state = None;
+                if self.follower_state.is_none() {
+                    self.follower_state = None;
+                }
             }
             // If not leader, the follower needs to reply the messages to
             // the leader after appending Raft entries.
@@ -264,8 +287,23 @@ impl SawtoothRaftNode {
                     } {
                         debug!("Leader({}) transitioning to Committing block {:?}", self.id, block_id);
                         self.leader_state = Some(LeaderState::Committing(block_id.clone()));
+                        self.service.commit_block(block_id.clone()).expect("Failed to commit block");
                     }
-                    self.service.commit_block(block_id.clone()).expect("Failed to commit block");
+
+                    if self.follower_state.is_some() {
+                        match self.service.commit_block(block_id.clone()) {
+                            Err(Error::UnknownBlock(_)) => {
+                                debug!(
+                                    "Follower({}) tried to commit block before available: {:?}",
+                                    self.id,
+                                    block_id
+                                );
+                                self.follower_state = Some(FollowerState::Committing(block_id));
+                            }
+                            Err(err) => panic!("Failed to commit block {:?}", err),
+                            _ => (),
+                        }
+                    }
                 }
             }
         }
