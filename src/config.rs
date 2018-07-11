@@ -40,6 +40,9 @@ impl Default for RaftEngineConfig {
         raft.election_tick = 10;
         raft.heartbeat_tick = 3;
         raft.max_inflight_msgs = 256;
+        raft.max_size_per_msg = 1024 * 1024 * 1024;
+        raft.applied = 0;
+        raft.tag = format!("[{}]", 1);
 
         RaftEngineConfig {
             peers: HashMap::new(),
