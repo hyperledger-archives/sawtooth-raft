@@ -24,7 +24,7 @@ use raft::{
 };
 
 use sawtooth_sdk::consensus::{
-    engine::{Block, PeerInfo, Engine, Update},
+    engine::{StartupState, Engine, Update},
     service::Service,
 };
 
@@ -50,9 +50,12 @@ impl Engine for RaftEngine {
         &mut self,
         updates: Receiver<Update>,
         mut service: Box<Service>,
-        chain_head: Block,
-        _peers: Vec<PeerInfo>,
-    ) {
+        startup_state: StartupState,
+     ) {
+        let StartupState {
+            chain_head,
+            ..
+        } = startup_state;
 
         // Create the configuration for the Raft node.
         let cfg = config::load_raft_config(self.id, chain_head.block_id, &mut service);
