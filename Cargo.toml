@@ -2,6 +2,17 @@
 name = "sawtooth-raft"
 version = "0.1.0"
 authors = ["Intel Corporation"]
+description = "Hyperledger Sawtooth Raft consensus engine"
+
+[package.metadata.deb]
+maintainer = "sawtooth"
+depends = "$auto"
+assets = [
+    ["packaging/systemd/sawtooth-raft.service", "/lib/systemd/system/sawtooth-raft.service", "644"],
+    ["packaging/systemd/sawtooth-raft", "/etc/default/sawtooth-raft", "644"],
+    ["target/release/sawtooth-raft", "/usr/bin/sawtooth-raft", "755"]
+]
+maintainer-scripts = "packaging/ubuntu"
 
 [dependencies]
 clap = "2"
