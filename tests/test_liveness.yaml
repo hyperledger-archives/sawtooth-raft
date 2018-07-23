@@ -42,11 +42,14 @@ services:
     command: "bash -c \"\
       sawtooth keygen smallbank-key; \
       while true; do curl -s http://rest-api-1:8008/state | grep -q head; if [ $$? -eq 0 ]; then break; fi; sleep 0.5; done; \
-      /sawtooth-core/perf/smallbank_workload/target/debug/smallbank-workload load --key /root/.sawtooth/keys/smallbank-key.priv --rate 1 --target http://rest-api-1:8008,http://rest-api-2:8008,http://rest-api-3:8008 \
+      smallbank-workload load --key /root/.sawtooth/keys/smallbank-key.priv --rate 1 --target http://rest-api-1:8008,http://rest-api-2:8008,http://rest-api-3:8008 \
       \""
 
   validator-1:
-    image: hyperledger/sawtooth-validator:latest
+    image: sawtooth-raft-test:$ISOLATION_ID
+    build:
+      context: .
+      dockerfile: sawtooth-raft-test.dockerfile
     volumes:
       - keys:/shared_keys
     expose:
@@ -83,7 +86,10 @@ services:
     stop_signal: SIGKILL
 
   validator-2:
-    image: hyperledger/sawtooth-validator:latest
+    image: sawtooth-raft-test:$ISOLATION_ID
+    build:
+      context: .
+      dockerfile: sawtooth-raft-test.dockerfile
     volumes:
       - keys:/shared_keys
     expose:
@@ -104,7 +110,10 @@ services:
     stop_signal: SIGKILL
 
   validator-3:
-    image: hyperledger/sawtooth-validator:latest
+    image: sawtooth-raft-test:$ISOLATION_ID
+    build:
+      context: .
+      dockerfile: sawtooth-raft-test.dockerfile
     volumes:
       - keys:/shared_keys
     expose:
@@ -158,7 +167,10 @@ services:
     stop_signal: SIGKILL
 
   rest-api-1:
-    image: hyperledger/sawtooth-rest-api:latest
+    image: sawtooth-raft-test:$ISOLATION_ID
+    build:
+      context: .
+      dockerfile: sawtooth-raft-test.dockerfile
     expose:
       - 4004
       - 8008
@@ -166,7 +178,10 @@ services:
     stop_signal: SIGKILL
 
   rest-api-2:
-    image: hyperledger/sawtooth-rest-api:latest
+    image: sawtooth-raft-test:$ISOLATION_ID
+    build:
+      context: .
+      dockerfile: sawtooth-raft-test.dockerfile
     expose:
       - 4004
       - 8008
@@ -174,7 +189,10 @@ services:
     stop_signal: SIGKILL
 
   rest-api-3:
-    image: hyperledger/sawtooth-rest-api:latest
+    image: sawtooth-raft-test:$ISOLATION_ID
+    build:
+      context: .
+      dockerfile: sawtooth-raft-test.dockerfile
     expose:
       - 4004
       - 8008
@@ -182,42 +200,60 @@ services:
     stop_signal: SIGKILL
 
   smallbank-tp-1:
-    image: hyperledger/sawtooth-smallbank-tp-go:latest
+    image: sawtooth-raft-test:$ISOLATION_ID
+    build:
+      context: .
+      dockerfile: sawtooth-raft-test.dockerfile
     expose:
       - 4004
     command: smallbank-tp-go -C tcp://validator-1:4004 --max-queue-size 1024 --worker-thread-count 32
     stop_signal: SIGKILL
 
   smallbank-tp-2:
-    image: hyperledger/sawtooth-smallbank-tp-go:latest
+    image: sawtooth-raft-test:$ISOLATION_ID
+    build:
+      context: .
+      dockerfile: sawtooth-raft-test.dockerfile
     expose:
       - 4004
     command: smallbank-tp-go -C tcp://validator-2:4004 --max-queue-size 1024 --worker-thread-count 32
     stop_signal: SIGKILL
 
   smallbank-tp-3:
-    image: hyperledger/sawtooth-smallbank-tp-go:latest
+    image: sawtooth-raft-test:$ISOLATION_ID
+    build:
+      context: .
+      dockerfile: sawtooth-raft-test.dockerfile
     expose:
       - 4004
     command: smallbank-tp-go -C tcp://validator-3:4004 --max-queue-size 1024 --worker-thread-count 32
     stop_signal: SIGKILL
 
   settings-tp-1:
-    image: hyperledger/sawtooth-settings-tp:latest
+    image: sawtooth-raft-test:$ISOLATION_ID
+    build:
+      context: .
+      dockerfile: sawtooth-raft-test.dockerfile
     expose:
       - 4004
     command: settings-tp -C tcp://validator-1:4004 -v
     stop_signal: SIGKILL
 
   settings-tp-2:
-    image: hyperledger/sawtooth-settings-tp:latest
+    image: sawtooth-raft-test:$ISOLATION_ID
+    build:
+      context: .
+      dockerfile: sawtooth-raft-test.dockerfile
     expose:
       - 4004
     command: settings-tp -C tcp://validator-2:4004
     stop_signal: SIGKILL
 
   settings-tp-3:
-    image: hyperledger/sawtooth-settings-tp:latest
+    image: sawtooth-raft-test:$ISOLATION_ID
+    build:
+      context: .
+      dockerfile: sawtooth-raft-test.dockerfile
     expose:
       - 4004
     command: settings-tp -C tcp://validator-3:4004
