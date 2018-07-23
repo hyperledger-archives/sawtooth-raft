@@ -25,30 +25,16 @@ RUN echo "deb [arch=amd64] http://repo.sawtooth.me/ubuntu/nightly xenial univers
     libssl-dev \
     gcc \
     git \
-    libzmq3-dev \
-    openssl \
     pkg-config \
     python3 \
     python3-sawtooth-cli \
+    python3-sawtooth-rest-api \
+    python3-sawtooth-settings \
+    python3-sawtooth-validator \
     python3-requests \
     python3-nose2 \
+    sawtooth-smallbank-workload \
+    sawtooth-smallbank-tp-go \
     unzip \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
-
-RUN curl -OLsS https://github.com/google/protobuf/releases/download/v3.5.1/protoc-3.5.1-linux-x86_64.zip \
- && unzip protoc-3.5.1-linux-x86_64.zip -d protoc3 \
- && rm protoc-3.5.1-linux-x86_64.zip
-
-RUN curl https://sh.rustup.rs -sSf > /usr/bin/rustup-init \
- && chmod +x /usr/bin/rustup-init \
- && rustup-init -y
-
-ENV PATH=$PATH:/protoc3/bin:/project/sawtooth-core/bin:/root/.cargo/bin \
-    CARGO_INCREMENTAL=0
-
-RUN git clone https://github.com/hyperledger/sawtooth-core
-
-WORKDIR /sawtooth-core/perf
-
-RUN cd smallbank_workload && cargo build
