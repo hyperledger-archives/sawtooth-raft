@@ -229,7 +229,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
 
         if !ready.entries.is_empty() {
             // Append entries to the Raft log
-            self.raw_node.mut_store().append(&ready.entries).unwrap();
+            self.raw_node.mut_store().append(&ready.entries).expect("Failed to append entries");
         }
 
         if let Some(ref hs) = ready.hs {
