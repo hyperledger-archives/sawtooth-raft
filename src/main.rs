@@ -37,6 +37,7 @@ use sawtooth_sdk::consensus::zmq_driver::ZmqDriver;
 mod config;
 mod engine;
 mod node;
+mod path;
 mod storage;
 mod ticker;
 
