@@ -143,6 +143,8 @@ services:
     working_dir: /project/sawtooth-raft/
     command: ./target/debug/sawtooth-raft --connect tcp://validator-1:5050 -v
     stop_signal: SIGKILL
+    environment:
+      RUST_BACKTRACE: full
 
   raft-2:
     image: sawtooth-raft-engine-local:$ISOLATION_ID
@@ -154,6 +156,8 @@ services:
     working_dir: /project/sawtooth-raft/
     command: ./target/debug/sawtooth-raft --connect tcp://validator-2:5050 -v
     stop_signal: SIGKILL
+    environment:
+      RUST_BACKTRACE: full
 
   raft-3:
     image: sawtooth-raft-engine-local:$ISOLATION_ID
@@ -165,6 +169,8 @@ services:
     working_dir: /project/sawtooth-raft/
     command: ./target/debug/sawtooth-raft --connect tcp://validator-3:5050 -v
     stop_signal: SIGKILL
+    environment:
+      RUST_BACKTRACE: full
 
   rest-api-1:
     image: sawtooth-raft-test:$ISOLATION_ID
