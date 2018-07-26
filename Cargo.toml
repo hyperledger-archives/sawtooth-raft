@@ -6,7 +6,7 @@ description = "Hyperledger Sawtooth Raft consensus engine"
 
 [package.metadata.deb]
 maintainer = "sawtooth"
-depends = "$auto"
+depends = "$auto,rsyslog"
 assets = [
     ["packaging/systemd/sawtooth-raft.service", "/lib/systemd/system/sawtooth-raft.service", "644"],
     ["packaging/systemd/sawtooth-raft", "/etc/default/sawtooth-raft", "644"],
@@ -18,8 +18,12 @@ maintainer-scripts = "packaging/ubuntu"
 clap = "2"
 hex = "0.3"
 log = "0.4"
+log4rs = "0.8"
+log4rs-syslog = "3.0"
 protobuf = "2"
 raft = "0.3.0"
 sawtooth_sdk = { git = "https://github.com/hyperledger/sawtooth-core.git" }
 serde_json = "1"
-simple_logger = "0.5"
+
+[patch.crates-io]
+log4rs = { git = "https://github.com/ltseeley/log4rs", branch = "config-loading" }
