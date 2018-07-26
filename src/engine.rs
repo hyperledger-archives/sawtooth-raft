@@ -31,6 +31,7 @@ use sawtooth_sdk::consensus::{
 use config::{self, RaftEngineConfig};
 use ticker;
 use node::SawtoothRaftNode;
+use storage::StorageExt;
 
 
 pub struct RaftEngine {
@@ -110,7 +111,7 @@ impl Engine for RaftEngine {
 }
 
 // Returns whether the engine should continue
-fn handle_update(node: &mut SawtoothRaftNode, update: Update) -> bool {
+fn handle_update<S: StorageExt>(node: &mut SawtoothRaftNode<S>, update: Update) -> bool {
     match update {
         Update::BlockNew(block) => node.on_block_new(block),
         Update::BlockValid(block_id) => node.on_block_valid(block_id),

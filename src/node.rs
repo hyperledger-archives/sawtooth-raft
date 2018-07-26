@@ -26,13 +26,14 @@ use raft::{
         Message as RaftMessage,
     },
     raw_node::RawNode,
-    storage::MemStorage,
 };
 
 use sawtooth_sdk::consensus::{
     engine::{Block, BlockId, PeerId, PeerMessage, Error},
     service::Service,
 };
+
+use storage::StorageExt;
 
 /// Possible states a leader node can be in
 ///
@@ -55,9 +56,9 @@ enum FollowerState {
     Committing(BlockId),
 }
 
-pub struct SawtoothRaftNode {
+pub struct SawtoothRaftNode<S: StorageExt> {
     id: u64,
-    raw_node: RawNode<MemStorage>,
+    raw_node: RawNode<S>,
     service: Box<Service>,
     leader_state: Option<LeaderState>,
     follower_state: Option<FollowerState>,
@@ -65,10 +66,10 @@ pub struct SawtoothRaftNode {
     period: Duration,
 }
 
-impl SawtoothRaftNode {
+impl<S: StorageExt> SawtoothRaftNode<S> {
     pub fn new(
         id: u64,
-        raw_node: RawNode<MemStorage>,
+        raw_node: RawNode<S>,
         service: Box<Service>,
         peers: HashMap<PeerId, u64>,
         period: Duration
@@ -221,19 +222,18 @@ impl SawtoothRaftNode {
         if !raft::is_empty_snap(&ready.snapshot) {
             // This is a snapshot, we need to apply the snapshot at first.
             self.raw_node.mut_store()
-                .wl()
                 .apply_snapshot(ready.snapshot.clone())
                 .unwrap();
         }
 
         if !ready.entries.is_empty() {
             // Append entries to the Raft log
-            self.raw_node.mut_store().wl().append(&ready.entries).unwrap();
+            self.raw_node.mut_store().append(&ready.entries).unwrap();
         }
 
         if let Some(ref hs) = ready.hs {
             // Raft HardState changed, and we need to persist it.
-            self.raw_node.mut_store().wl().set_hardstate(hs.clone());
+            self.raw_node.mut_store().set_hardstate(hs.clone());
         }
 
         if !is_leader {
