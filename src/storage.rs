@@ -31,8 +31,7 @@ pub trait StorageExt: Storage {
     /// responsibility to not attempt to compact an index greater than RaftLog.applied.
     fn compact(&self, compact_index: u64) -> Result<(), Error>;
 
-    /// Append the new entries to storage. TODO: ensure the entries are continuous and
-    /// entries[0].get_index() > self.entries[0].get_index()
+    /// Append the new entries to storage
     fn append(&self, ents: &[Entry]) -> Result<(), Error>;
 }
 
