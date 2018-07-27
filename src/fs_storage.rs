@@ -195,6 +195,10 @@ impl StorageExt for FsStorage {
             .collect::<Result<Vec<()>, io::Error>>()?;
         Ok(())
     }
+
+    fn describe() -> &'static str {
+        "file-system backed persistent storage"
+    }
 }
 
 

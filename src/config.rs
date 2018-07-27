@@ -62,11 +62,12 @@ impl<S: StorageExt> fmt::Debug for RaftEngineConfig<S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "RaftEngineConfig {{ peers: {:?}, period: {:?}, raft: {{ election_tick: {}, heartbeat_tick: {} }}, storage: MemStorage }}",
+            "RaftEngineConfig {{ peers: {:?}, period: {:?}, raft: {{ election_tick: {}, heartbeat_tick: {} }}, storage: {} }}",
             self.peers,
             self.period,
             self.raft.election_tick,
             self.raft.heartbeat_tick,
+            S::describe(),
         )
     }
 }
