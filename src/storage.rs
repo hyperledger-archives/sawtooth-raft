@@ -21,11 +21,11 @@ use raft::{Error, eraftpb::{Entry, HardState, Snapshot}, storage::{MemStorage, S
 /// MemStorage type.
 pub trait StorageExt: Storage {
     /// set_hardstate saves the current HardState.
-    fn set_hardstate(&self, hs: HardState);
+    fn set_hardstate(&self, hard_state: &HardState);
 
     /// apply_snapshot overwrites the contents of this Storage object with those of the given
     /// snapshot.
-    fn apply_snapshot(&self, snapshot: Snapshot) -> Result<(), Error>;
+    fn apply_snapshot(&self, snapshot: &Snapshot) -> Result<(), Error>;
 
     /// compact discards all log entries prior to compact_index. It is the application's
     /// responsibility to not attempt to compact an index greater than RaftLog.applied.
@@ -36,12 +36,13 @@ pub trait StorageExt: Storage {
 }
 
 impl StorageExt for MemStorage {
-    fn set_hardstate(&self, hs: HardState) {
-        self.wl().set_hardstate(hs)
+    fn set_hardstate(&self, hs: &HardState) {
+        self.wl().set_hardstate(hs.clone())
     }
 
-    fn apply_snapshot(&self, snapshot: Snapshot) -> Result<(), Error> {
-        self.wl().apply_snapshot(snapshot)
+
+    fn apply_snapshot(&self, snapshot: &Snapshot) -> Result<(), Error> {
+        self.wl().apply_snapshot(snapshot.clone())
     }
 
     fn compact(&self, compact_index: u64) -> Result<(), Error> {

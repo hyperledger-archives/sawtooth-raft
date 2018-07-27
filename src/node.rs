@@ -223,7 +223,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         if !raft::is_empty_snap(&ready.snapshot) {
             // This is a snapshot, we need to apply the snapshot at first.
             self.raw_node.mut_store()
-                .apply_snapshot(ready.snapshot.clone())
+                .apply_snapshot(&ready.snapshot)
                 .unwrap();
         }
 
@@ -234,7 +234,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
 
         if let Some(ref hs) = ready.hs {
             // Raft HardState changed, and we need to persist it.
-            self.raw_node.mut_store().set_hardstate(hs.clone());
+            self.raw_node.mut_store().set_hardstate(hs);
         }
 
         if !is_leader {
