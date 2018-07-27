@@ -15,7 +15,7 @@
  * ------------------------------------------------------------------------------
  */
 
-use raft::{Error, eraftpb::{Entry, HardState, Snapshot}, storage::{MemStorage, Storage}};
+use raft::{Error, eraftpb::{ConfState, Entry, HardState, Snapshot}, storage::{MemStorage, Storage}};
 
 /// Extends the storage trait to include methods used by SawtoothRaftNode and provided by the
 /// MemStorage type.
@@ -26,6 +26,14 @@ pub trait StorageExt: Storage {
     /// apply_snapshot overwrites the contents of this Storage object with those of the given
     /// snapshot.
     fn apply_snapshot(&self, snapshot: &Snapshot) -> Result<(), Error>;
+
+    /// creates and applies a new snapshot, returning a clone of the created snapshot
+    fn create_snapshot(
+        &self,
+        index: u64,
+        conf_state: Option<&ConfState>,
+        data: Vec<u8>,
+    ) -> Result<Snapshot, Error>;
 
     /// compact discards all log entries prior to compact_index. It is the application's
     /// responsibility to not attempt to compact an index greater than RaftLog.applied.
@@ -38,6 +46,15 @@ pub trait StorageExt: Storage {
 impl StorageExt for MemStorage {
     fn set_hardstate(&self, hs: &HardState) {
         self.wl().set_hardstate(hs.clone())
+    }
+
+    fn create_snapshot(
+        &self,
+        idx: u64,
+        cs: Option<&ConfState>,
+        data: Vec<u8>,
+    ) -> Result<Snapshot, Error> {
+        self.wl().create_snapshot(idx, cs.map(ConfState::clone), data).map(Snapshot::clone)
     }
 
 
