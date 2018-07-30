@@ -74,11 +74,11 @@ fn main() {
 
     info!("Sawtooth Raft Engine ({})", env!("CARGO_PKG_VERSION"));
 
-    let raft_engine = engine::RaftEngine::new(args.id);
+    let raft_engine = engine::RaftEngine::new();
 
     let (driver, _stop) = ZmqDriver::new();
 
-    info!("Raft Node {} connecting to '{}'", &args.id, &args.endpoint);
+    info!("Raft Node connecting to '{}'", &args.endpoint);
     driver.start(&args.endpoint, raft_engine).unwrap_or_else(|err| {
         error!("{}", err);
         process::exit(1);
@@ -110,8 +110,7 @@ fn parse_args() -> RaftCliArgs {
         (@arg verbose: -v --verbose +multiple
          "increase output verbosity")
         (@arg logconfig: -L --log_config +takes_value
-         "path to logging config file")
-        (@arg ID: +required "the raft node's id"))
+         "path to logging config file"))
         .get_matches();
 
     let log_level = match matches.occurrences_of("verbose") {
@@ -128,14 +127,10 @@ fn parse_args() -> RaftCliArgs {
         .unwrap_or("tcp://localhost:5050")
         .into();
 
-    let id = value_t!(matches.value_of("ID"), u64)
-        .unwrap_or_else(|e| e.exit());
-
     RaftCliArgs {
         log_config,
         log_level,
         endpoint,
-        id,
     }
 }
 
@@ -143,5 +138,4 @@ pub struct RaftCliArgs {
     log_config: Option<String>,
     log_level: log::LevelFilter,
     endpoint: String,
-    id: u64,
 }

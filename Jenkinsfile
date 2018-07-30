@@ -70,7 +70,7 @@ node ('master') {
 
             // Run the tests
             stage("Run Tests") {
-                sh 'docker-compose -f tests/test_liveness.yaml up --build --abort-on-container-exit --force-recreate --renew-anon-volumes --exit-code-from test-raft-engine'
+                sh './bin/run_docker_test tests/test_liveness.yaml'
             }
         }
     }

@@ -20,7 +20,7 @@ volumes:
 
 services:
 
-  test-raft-engine:
+  test-liveness:
     image: sawtooth-raft-test:$ISOLATION_ID
     build:
       context: .
@@ -67,7 +67,7 @@ services:
         sawset proposal create \
           -k /etc/sawtooth/keys/validator.priv \
           sawtooth.consensus.algorithm=raft \
-          sawtooth.consensus.raft.peers='{\\\"'$$(cat /etc/sawtooth/keys/validator.pub)'\\\"':1,'\\\"'$$(cat /etc/sawtooth/keys/validator-2.pub)'\\\"':2,'\\\"'$$(cat /etc/sawtooth/keys/validator-3.pub)'\\\":3}'
+          sawtooth.consensus.raft.peers=\\['\\\"'$$(cat /etc/sawtooth/keys/validator.pub)'\\\"','\\\"'$$(cat /etc/sawtooth/keys/validator-2.pub)'\\\"','\\\"'$$(cat /etc/sawtooth/keys/validator-3.pub)'\\\"'\\]
           sawtooth.consensus.raft.period=1 \
           -o config.batch && \
         sawadm genesis \
@@ -141,7 +141,7 @@ services:
     volumes:
       - ..:/project/sawtooth-raft
     working_dir: /project/sawtooth-raft/
-    command: ./target/debug/sawtooth-raft --connect tcp://validator-1:5050 1 -v
+    command: ./target/debug/sawtooth-raft --connect tcp://validator-1:5050 -v
     stop_signal: SIGKILL
 
   raft-2:
@@ -152,7 +152,7 @@ services:
     volumes:
       - ..:/project/sawtooth-raft
     working_dir: /project/sawtooth-raft/
-    command: ./target/debug/sawtooth-raft --connect tcp://validator-2:5050 2 -v
+    command: ./target/debug/sawtooth-raft --connect tcp://validator-2:5050 -v
     stop_signal: SIGKILL
 
   raft-3:
@@ -163,7 +163,7 @@ services:
     volumes:
       - ..:/project/sawtooth-raft
     working_dir: /project/sawtooth-raft/
-    command: ./target/debug/sawtooth-raft --connect tcp://validator-3:5050 3 -v
+    command: ./target/debug/sawtooth-raft --connect tcp://validator-3:5050 -v
     stop_signal: SIGKILL
 
   rest-api-1:

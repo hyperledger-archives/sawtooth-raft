@@ -22,15 +22,6 @@ should use a small number of nodes with a relatively fixed membership. (Adding
 and removing nodes is not currently supported, although we intend to add this
 feature in the future).
 
-Each node must have a unique, non-zero integer for an identifier. Currently,
-this must be specified manually on the command line and in the on-chain setting
-below.
-
-### Configure On-Chain Sawtooth Raft Settings
-
-Assign each validator that will be on the network a unique integer. This will
-be its "raft id". No id may be 0.
-
 ### Configure the Sawtooth Network
 
 When starting validators, they should be configured to use static peering using
@@ -45,13 +36,13 @@ network, they should be set in the genesis block. All settings are prefixed
 with `sawtooth.consensus.raft`.
 
 The only required setting is `sawtooth.consensus.raft.peers`. It must contain
-a mapping of each node's public key to each node's raft id.
+a JSON list of each node's public key.
 
 ### Required Settings
 
 | key | value |
 | --- | --- |
-| peers | JSON - Map<PeerId, u64> |
+| peers | JSON - Vec<PeerId> |
 
 ### Optional Settings
 
@@ -89,7 +80,7 @@ a mapping of each node's public key to each node's raft id.
     optimistically after a newly produced block has been validated so that a
     new block can be published as soon as the previous block commits.
 
-[ ] Use Public Keys as Raft IDs
+[x] Use Public Keys as Raft IDs
 
     Translate Sawtooth Peer IDs directly to Raft IDs to simplify configuration.
     Eliminates the need to specify the setting in the on-chain setting.
