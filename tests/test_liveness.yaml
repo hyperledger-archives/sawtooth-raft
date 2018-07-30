@@ -20,7 +20,7 @@ volumes:
 
 services:
 
-  test-raft-engine:
+  test-liveness:
     image: sawtooth-raft-test:$ISOLATION_ID
     build:
       context: .
