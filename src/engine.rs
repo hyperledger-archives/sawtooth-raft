@@ -76,7 +76,11 @@ impl Engine for RaftEngine {
             .iter()
             .map(|id| RaftPeer { id: *id, context: None })
             .collect();
-        let raw_node = RawNode::new(&raft_config, raft_storage, raft_peers).unwrap();
+        let raw_node = RawNode::new(
+            &raft_config,
+            raft_storage,
+            raft_peers
+        ).expect("Failed to create new RawNode");
 
         let mut node = SawtoothRaftNode::new(
             local_peer_info.peer_id,

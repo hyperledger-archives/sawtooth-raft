@@ -70,6 +70,7 @@ node ('master') {
 
             // Run the tests
             stage("Run Tests") {
+                sh './bin/run_docker_test tests/test_unit.yaml'
                 sh './bin/run_docker_test tests/test_liveness.yaml'
             }
         }

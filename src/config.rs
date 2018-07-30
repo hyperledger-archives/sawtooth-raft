@@ -20,13 +20,12 @@ use std::fmt;
 use std::time::Duration;
 
 use hex;
-use raft::{
-    Config as RaftConfig,
-    storage::{MemStorage},
-};
+use raft::Config as RaftConfig;
 use sawtooth_sdk::consensus::{engine::{BlockId, PeerId}, service::Service};
 use serde_json;
 
+use fs_storage::FsStorage;
+use path::get_path_config;
 use storage::StorageExt;
 
 pub struct RaftEngineConfig<S: StorageExt> {
@@ -55,19 +54,20 @@ impl<S: StorageExt> RaftEngineConfig<S> {
     }
 }
 
-fn create_storage() -> MemStorage {
-    MemStorage::new()
+fn create_storage() -> FsStorage {
+    FsStorage::with_data_dir(get_path_config().data_dir).expect("Failed to create FsStorage")
 }
 
 impl<S: StorageExt> fmt::Debug for RaftEngineConfig<S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "RaftEngineConfig {{ peers: {:?}, period: {:?}, raft: {{ election_tick: {}, heartbeat_tick: {} }}, storage: MemStorage }}",
+            "RaftEngineConfig {{ peers: {:?}, period: {:?}, raft: {{ election_tick: {}, heartbeat_tick: {} }}, storage: {} }}",
             self.peers,
             self.period,
             self.raft.election_tick,
             self.raft.heartbeat_tick,
+            S::describe(),
         )
     }
 }

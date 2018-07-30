@@ -27,3 +27,6 @@ serde_json = "1"
 
 [patch.crates-io]
 log4rs = { git = "https://github.com/ltseeley/log4rs", branch = "config-loading" }
+
+[dev-dependencies]
+tempdir = "0.3"

@@ -1,0 +1,18 @@
+version: "2.1"
+
+volumes:
+  cargo-registry:
+
+services:
+  test-unit:
+    image: sawtooth-raft-engine-local:$ISOLATION_ID
+    build:
+      context: .
+      dockerfile: ../Dockerfile
+    volumes:
+      - ..:/project/sawtooth-raft
+      - cargo-registry:/root/.cargo/registry
+    command: cargo test
+    stop_signal: SIGKILL
+    environment:
+      RUST_BACKTRACE: full
