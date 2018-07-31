@@ -12,9 +12,9 @@ additional work to be done in order to make it production worthy.
 
 Using the Sawtooth Raft engine with Sawtooth requires the following:
 
-1. Configure Sawtooth Raft by specifying the required on-chain settings
-2. Configure the Sawtooth network so that all validators can communicate
-3. Start a Raft engine for every validator and connect it to the validator
+1. Configure the Sawtooth network so that all validators can communicate
+2. Start a Raft engine for every validator and connect it to the validator
+3. Configure Sawtooth Raft by specifying the required on-chain settings
 
 Sawtooth deployments using the Sawtooth Raft consensus engine require nodes to
 be fully-connected in order to function correctly. As a result, deployments
@@ -60,7 +60,7 @@ a JSON list of each node's public key.
     Only bother checking blocks in Update::BlockNew that we expected to get
     based on consensus (ie., don't check unexpected blocks).
 
-[ ] Persistent Storage
+[x] Persistent Storage
 
     Replace the memory-backed storage implementation with a persistent storage
     implementation. This eliminates the need for nodes to rebuild logs from
