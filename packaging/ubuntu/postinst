@@ -17,6 +17,10 @@
 
 set -e
 
+directories="
+    /var/lib/sawtooth-raft
+"
+
 user="sawtooth"
 group="sawtooth"
 
@@ -27,3 +31,10 @@ fi
 if ! getent passwd $user > /dev/null; then
     adduser --quiet --system --ingroup $group $user
 fi
+
+for dir in $directories
+do
+    mkdir -p $dir
+    chown -R $user:$group $dir
+    chmod 750 $dir
+done
