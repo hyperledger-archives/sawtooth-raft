@@ -38,11 +38,7 @@ pub struct RaftEngineConfig<S: StorageExt> {
 impl<S: StorageExt> RaftEngineConfig<S> {
     fn new(storage: S) -> Self {
         let mut raft = RaftConfig::default();
-        raft.election_tick = 10;
-        raft.heartbeat_tick = 3;
-        raft.max_inflight_msgs = 256;
         raft.max_size_per_msg = 1024 * 1024 * 1024;
-        raft.applied = 0;
 
         RaftEngineConfig {
             peers: Vec::new(),
