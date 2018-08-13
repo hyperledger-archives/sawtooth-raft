@@ -43,7 +43,6 @@ impl<S: StorageExt> RaftEngineConfig<S> {
         raft.max_inflight_msgs = 256;
         raft.max_size_per_msg = 1024 * 1024 * 1024;
         raft.applied = 0;
-        raft.tag = format!("[{}]", 1);
 
         RaftEngineConfig {
             peers: Vec::new(),
@@ -80,6 +79,7 @@ pub fn load_raft_config(
 
     let mut config = RaftEngineConfig::new(create_storage());
     config.raft.id = peer_id_to_raft_id(peer_id);
+    config.raft.tag = format!("[{}]", config.raft.id);
 
     let settings_keys = vec![
         "sawtooth.consensus.raft.peers",

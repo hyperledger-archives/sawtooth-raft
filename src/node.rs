@@ -215,7 +215,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             }
             // If the peer is leader, the leader can send messages to other followers ASAP.
             for msg in ready.messages.drain(..) {
-                debug!("Leader({:?}) wants to send message to {}", self.peer_id, msg.to);
+                debug!("Leader({:?}) wants to send message: {:?}", self.peer_id, msg);
                 self.send_msg(&msg);
             }
         }
@@ -260,7 +260,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             // the leader after appending Raft entries.
             let msgs = ready.messages.drain(..);
             for msg in msgs {
-                debug!("Peer({:?}) wants to send message to {}", self.peer_id, msg.to);
+                debug!("Peer({:?}) wants to send message: {:?}", self.peer_id, msg);
                 self.send_msg(&msg);
             }
         }
