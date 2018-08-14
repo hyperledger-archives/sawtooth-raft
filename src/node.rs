@@ -171,7 +171,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
                 },
                 Err(Error::BlockNotReady) => {
                      // Try again later
-                    debug!("Leader({:?}) tried to finalize block but block not read", self.peer_id);
+                    debug!("Leader({:?}) tried to finalize block but block not ready", self.peer_id);
                 },
                 Err(err) => panic!("Failed to finalize block: {:?}", err),
             };
