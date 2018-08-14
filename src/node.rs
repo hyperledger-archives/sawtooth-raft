@@ -253,7 +253,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
                 }
                 self.leader_state = None;
                 if self.follower_state.is_none() {
-                    self.follower_state = None;
+                    self.follower_state = Some(FollowerState::Idle);
                 }
             }
             // If not leader, the follower needs to reply the messages to
