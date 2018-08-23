@@ -171,7 +171,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
                 },
                 Err(Error::BlockNotReady) => {
                      // Try again later
-                    debug!("Leader({:?}) tried to finalize block but block not read", self.peer_id);
+                    debug!("Leader({:?}) tried to finalize block but block not ready", self.peer_id);
                 },
                 Err(err) => panic!("Failed to finalize block: {:?}", err),
             };
@@ -215,7 +215,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             }
             // If the peer is leader, the leader can send messages to other followers ASAP.
             for msg in ready.messages.drain(..) {
-                debug!("Leader({:?}) wants to send message to {}", self.peer_id, msg.to);
+                debug!("Leader({:?}) wants to send message: {:?}", self.peer_id, msg);
                 self.send_msg(&msg);
             }
         }
@@ -253,14 +253,14 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
                 }
                 self.leader_state = None;
                 if self.follower_state.is_none() {
-                    self.follower_state = None;
+                    self.follower_state = Some(FollowerState::Idle);
                 }
             }
             // If not leader, the follower needs to reply the messages to
             // the leader after appending Raft entries.
             let msgs = ready.messages.drain(..);
             for msg in msgs {
-                debug!("Peer({:?}) wants to send message to {}", self.peer_id, msg.to);
+                debug!("Peer({:?}) wants to send message: {:?}", self.peer_id, msg);
                 self.send_msg(&msg);
             }
         }
