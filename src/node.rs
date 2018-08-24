@@ -143,8 +143,9 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             debug!("Leader({:?}) transition to Building block {:?}", self.peer_id, block_id);
             self.leader_state = Some(LeaderState::Building(Instant::now()));
             self.service.initialize_block(None).expect("Failed to initialize block");
+        } else {
+            info!("Peer({:?}) committed block {:?}", self.peer_id, block_id);
         }
-        info!("Peer({:?}) committed block {:?}", self.peer_id, block_id);
     }
 
     pub fn on_peer_message(&mut self, message: PeerMessage) {
