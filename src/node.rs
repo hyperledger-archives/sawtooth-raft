@@ -63,7 +63,8 @@ pub struct SawtoothRaftNode<S: StorageExt> {
     service: Box<Service>,
     leader_state: Option<LeaderState>,
     follower_state: Option<FollowerState>,
-    valid_block_backlog: VecDeque<BlockId>,
+    new_block_backlog: VecDeque<Block>,
+    valid_block_backlog: VecDeque<Block>,
     commit_block_backlog: VecDeque<BlockId>,
     raft_id_to_peer_id: HashMap<u64, PeerId>,
     period: Duration,
@@ -83,6 +84,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             service,
             leader_state: None,
             follower_state: Some(FollowerState::Idle),
+            new_block_backlog: VecDeque::new(),
             valid_block_backlog: VecDeque::new(),
             commit_block_backlog: VecDeque::new(),
             raft_id_to_peer_id: peers.into_iter().map(|peer_id| (peer_id_to_raft_id(&peer_id), peer_id)).collect(),
@@ -101,13 +103,21 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             self.leader_state = Some(LeaderState::Validating(block.block_id.clone()));
         }
 
+        debug!("Block has been received: {:?}", &block);
+        self.new_block_backlog.push_back(block.clone());
+
         self.service.check_blocks(vec![block.block_id]).expect("Failed to send check blocks");
     }
 
     pub fn on_block_valid(&mut self, block_id: BlockId) {
         // Handle out of order new/valid updates
         debug!("Block has been validated: {:?}", &block_id);
-        self.valid_block_backlog.push_back(block_id.clone());
+        let block = self.new_block_backlog
+            .iter()
+            .cloned()
+            .find(|block| block.block_id == block_id)
+            .expect("BlockNew not received before BlockValid");
+        self.valid_block_backlog.push_back(block);
         if match self.leader_state {
             Some(LeaderState::Publishing(ref expected)) => {
                 expected == &block_id
@@ -308,15 +318,28 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
     }
 
     fn commit_block(&mut self, block_id: BlockId) -> Result<(), BlockId> {
-        // Ensure block is committable (has been validated)
-        debug!("VERIFYING - block_id: {:?} in valid blocks: {:?} ", &block_id, self.valid_block_backlog);
-        if !self.valid_block_backlog.contains(&block_id) {
+        // Ensure block is committable (has been validated and previous block is chain head)
+        debug!(
+            "VERIFYING - block_id: {:?} in valid blocks: {:?} ",
+            &block_id, self.valid_block_backlog
+        );
+        let chain_head = self.service
+            .get_chain_head()
+            .expect("Chain head should not be none");
+        if match self.valid_block_backlog
+            .iter()
+            .find(|block| block.block_id == block_id)
+        {
+            Some(block) => block.previous_id != chain_head.block_id,
+            None => true,
+        } {
             // Block not committable yet, return uncommittable block_id
             debug!("Block not committable yet: {:?}", block_id);
             return Err(block_id);
         } else {
             debug!("Removing block from valid block backlog: {:?}", block_id);
-            self.valid_block_backlog.retain(|id| id != &block_id);
+            self.valid_block_backlog
+                .retain(|block| block.block_id != block_id);
         }
 
         debug!("Peer({:?}) committing block {:?}", self.peer_id, block_id);
