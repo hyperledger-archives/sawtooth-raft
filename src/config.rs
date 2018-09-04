@@ -24,6 +24,7 @@ use raft::Config as RaftConfig;
 use sawtooth_sdk::consensus::{engine::{BlockId, PeerId}, service::Service};
 use serde_json;
 
+use cached_storage::CachedStorage;
 use fs_storage::FsStorage;
 use path::get_path_config;
 use storage::StorageExt;
@@ -49,8 +50,10 @@ impl<S: StorageExt> RaftEngineConfig<S> {
     }
 }
 
-fn create_storage() -> FsStorage {
-    FsStorage::with_data_dir(get_path_config().data_dir).expect("Failed to create FsStorage")
+fn create_storage() -> CachedStorage<impl StorageExt> {
+    CachedStorage::new(
+        FsStorage::with_data_dir(get_path_config().data_dir).expect("Failed to create FsStorage")
+    )
 }
 
 impl<S: StorageExt> fmt::Debug for RaftEngineConfig<S> {
