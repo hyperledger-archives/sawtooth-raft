@@ -15,7 +15,7 @@
  * ------------------------------------------------------------------------------
  */
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use protobuf::{self, Message as ProtobufMessage, ProtobufError};
@@ -33,6 +33,7 @@ use sawtooth_sdk::consensus::{
     service::Service,
 };
 
+use block_queue::BlockQueue;
 use storage::StorageExt;
 use config::peer_id_to_raft_id;
 
@@ -63,9 +64,7 @@ pub struct SawtoothRaftNode<S: StorageExt> {
     service: Box<Service>,
     leader_state: Option<LeaderState>,
     follower_state: Option<FollowerState>,
-    new_block_backlog: VecDeque<Block>,
-    valid_block_backlog: VecDeque<Block>,
-    commit_block_backlog: VecDeque<BlockId>,
+    block_queue: BlockQueue,
     raft_id_to_peer_id: HashMap<u64, PeerId>,
     period: Duration,
 }
@@ -84,9 +83,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             service,
             leader_state: None,
             follower_state: Some(FollowerState::Idle),
-            new_block_backlog: VecDeque::new(),
-            valid_block_backlog: VecDeque::new(),
-            commit_block_backlog: VecDeque::new(),
+            block_queue: BlockQueue::new(),
             raft_id_to_peer_id: peers.into_iter().map(|peer_id| (peer_id_to_raft_id(&peer_id), peer_id)).collect(),
             period,
         }
@@ -104,7 +101,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         }
 
         debug!("Block has been received: {:?}", &block);
-        self.new_block_backlog.push_back(block.clone());
+        self.block_queue.block_new(block.clone());
 
         self.service.check_blocks(vec![block.block_id]).expect("Failed to send check blocks");
     }
@@ -112,12 +109,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
     pub fn on_block_valid(&mut self, block_id: BlockId) {
         // Handle out of order new/valid updates
         debug!("Block has been validated: {:?}", &block_id);
-        let block = self.new_block_backlog
-            .iter()
-            .cloned()
-            .find(|block| block.block_id == block_id)
-            .expect("BlockNew not received before BlockValid");
-        self.valid_block_backlog.push_back(block);
+        self.block_queue.block_valid(&block_id);
         if match self.leader_state {
             Some(LeaderState::Publishing(ref expected)) => {
                 expected == &block_id
@@ -282,15 +274,6 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             }
         }
 
-        // Commit block from backlog if necessary
-        match self.commit_block_backlog.pop_front() {
-            Some(block_id) => self.commit_block(block_id).unwrap_or_else(|block_id| {
-                // Block still can't be committed yet, re-add to front of backlog
-                self.commit_block_backlog.push_front(block_id)
-            }),
-            None => (),
-        };
-
         if let Some(committed_entries) = ready.committed_entries.take() {
             let mut _last_apply_index = 0;
             for entry in committed_entries {
@@ -305,44 +288,24 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
 
                 if entry.get_entry_type() == EntryType::EntryNormal {
                     let block_id: BlockId = BlockId::from(Vec::from(entry.get_data()));
-                    self.commit_block(block_id).unwrap_or_else(|block_id| {
-                        // Block can't be committed yet, add to backlog
-                        self.commit_block_backlog.push_back(block_id)
-                    });
+                    self.block_queue.add_block_commit(block_id);
                 }
             }
         }
+
+        // Commit next committable block from backlog (if there is one)
+        let chain_head = self.service
+            .get_chain_head()
+            .expect("Chain head should not be none");
+        if let Some(block_id) = self.block_queue.get_next_committable(&chain_head) {
+            self.commit_block(block_id);
+        };
 
         // Advance the Raft
         self.raw_node.advance(ready);
     }
 
-    fn commit_block(&mut self, block_id: BlockId) -> Result<(), BlockId> {
-        // Ensure block is committable (has been validated and previous block is chain head)
-        debug!(
-            "VERIFYING - block_id: {:?} in valid blocks: {:?} ",
-            &block_id, self.valid_block_backlog
-        );
-        let chain_head = self.service
-            .get_chain_head()
-            .expect("Chain head should not be none");
-        if match self.valid_block_backlog
-            .iter()
-            .find(|block| block.block_id == block_id)
-        {
-            Some(block) => block.previous_id != chain_head.block_id,
-            None => true,
-        } {
-            // Block not committable yet, return uncommittable block_id
-            debug!("Block not committable yet: {:?}", block_id);
-            return Err(block_id);
-        } else {
-            debug!("Removing block from valid block backlog: {:?}", block_id);
-            self.valid_block_backlog
-                .retain(|block| block.block_id != block_id);
-        }
-
-        debug!("Peer({:?}) committing block {:?}", self.peer_id, block_id);
+    fn commit_block(&mut self, block_id: BlockId) {
         if match self.leader_state {
             Some(LeaderState::Proposing(ref proposed)) => {
                 &block_id == proposed
@@ -355,6 +318,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         }
 
         if self.follower_state.is_some() {
+            debug!("Peer({:?}) committing block {:?}", self.peer_id, block_id);
             match self.service.commit_block(block_id.clone()) {
                 Err(Error::UnknownBlock(_)) => {
                     debug!(
@@ -368,8 +332,6 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
                 _ => (),
             }
         }
-
-        Ok(())
     }
 }
 
