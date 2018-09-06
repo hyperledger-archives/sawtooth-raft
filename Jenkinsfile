@@ -73,6 +73,15 @@ node ('master') {
                 sh './bin/run_docker_test tests/test_unit.yaml'
                 sh './bin/run_docker_test tests/test_liveness.yaml'
             }
+
+            stage("Build Docs") {
+                sh 'docker build . -f docs/Dockerfile -t sawtooth-raft-docs:$ISOLATION_ID'
+                sh 'docker run --rm -v $(pwd):/project/sawtooth-raft sawtooth-raft-docs:$ISOLATION_ID'
+            }
+
+            stage("Archive Build Artifacts") {
+                archiveArtifacts artifacts: 'docs/build/html/**, docs/build/latex/*.pdf'
+            }
         }
     }
 }
