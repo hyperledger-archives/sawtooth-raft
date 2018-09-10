@@ -38,6 +38,7 @@ use std::process;
 
 use sawtooth_sdk::consensus::zmq_driver::ZmqDriver;
 
+mod block_queue;
 mod cached_storage;
 mod config;
 mod engine;
