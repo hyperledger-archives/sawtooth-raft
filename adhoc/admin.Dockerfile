@@ -11,27 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ------------------------------------------------------------------------------
 
-version: "3.6"
+FROM ubuntu:xenial
 
-volumes:
-  raft_shared_data:
-    name: raft_shared_data
-
-networks:
-  validators:
-    name: raft_validators
-
-services:
-  admin:
-    build:
-      context: .
-      dockerfile: admin.Dockerfile
-    networks:
-      validators:
-    volumes:
-      - raft_shared_data:/shared_data
-    command: |
-      bash -c "rm -f /shared_data/* && ls /shared_data && tail -f /dev/null"
-    stop_signal: SIGKILL
+RUN echo "deb [arch=amd64] http://repo.sawtooth.me/ubuntu/nightly xenial universe" >> /etc/apt/sources.list \
+ && (apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 44FC67F19B2466EA \
+ || apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 44FC67F19B2466EA) \
+ && apt-get update \
+ && apt-get install -y -q --allow-downgrades \
+    curl \
+    inetutils-ping \
+    net-tools \
+    python3-sawtooth-cli \
+    python3-sawtooth-settings \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
