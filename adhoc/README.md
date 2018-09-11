@@ -27,6 +27,7 @@ of Sawtooth Raft networks simpler.
     - sawtooth-validator (>= v1.1)
     - sawtooth-rest-api
     - sawtooth-intkey-tp-python
+    - sawtooth-intkey-workload
     - sawtooth-settings-tp
 
    To build these from sawtooth-core, do:
@@ -36,6 +37,7 @@ of Sawtooth Raft networks simpler.
       validator \
       rest-api \
       intkey-tp-python \
+      intkey-workload \
       settings-tp
     ```
 
@@ -84,3 +86,17 @@ stop` with the appropriate `-p` flag.
 
 After you have stopped a node, you can use `docker-compose start` with the
 appropriate `-p` flag to restart the stopped node.
+
+## Applying workload on a network
+
+A workload generator can be started against the network using the
+`workload.yaml` compose file. To change the rate from the default, set the
+`RATE` environment variable prior to running the compose command.
+
+For example, to start a workload of 2 TPS against the network, do:
+
+    ```
+    RATE=2 docker-compose -f workload.yaml up
+    ```
+
+To stop the workload, use `stop` or `down` with `workload.yaml`.

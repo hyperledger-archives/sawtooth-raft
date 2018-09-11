@@ -21,6 +21,9 @@ networks:
   validators:
     external:
       name: raft_validators
+  rest_apis:
+    external:
+      name: raft_rest_apis
 
 volumes:
   raft_shared_data:
@@ -32,24 +35,26 @@ services:
     image: sawtooth-validator
     command: "bash -c \"\
       if [ ! -e /etc/sawtooth/keys/validator.pub ]; then sawadm keygen; fi && \
-      if [ ! -e /shared_data/$$(hostname) ]; then cat /etc/sawtooth/keys/validator.pub > /shared_data/$$(hostname); fi && \
+      if [ ! -e /shared_data/validators/$$(hostname) ]; then \
+        cat /etc/sawtooth/keys/validator.pub > /shared_data/validators/$$(hostname); \
+      fi && \
       echo \\\"-- /var/lib/sawtooth\\\" && ls /var/lib/sawtooth && \
-      echo \\\"-- /shared_data \\\" && ls /shared_data && \
+      echo \\\"-- /shared_data/validators \\\" && ls /shared_data/validators && \
       if [ ${GENESIS:-0} != 0 ]; then \
         echo \\\"Running Genesis\\\" && \
         sawset genesis \
-          -k /etc/sawtooth/keys/validator.priv \
+          -k /shared_data/keys/settings.priv \
           -o config-genesis.batch && \
         sawset proposal create \
-          -k /etc/sawtooth/keys/validator.priv \
+          -k /shared_data/keys/settings.priv \
           sawtooth.consensus.algorithm=raft \
-          sawtooth.consensus.raft.peers=\\['\\\"'$$(cd /shared_data && paste $$(ls -1) -d , | sed s/,/\\\\\\\",\\\\\\\"/g)'\\\"'\\]
+          sawtooth.consensus.raft.peers=\\['\\\"'$$(cd /shared_data/validators && paste $$(ls -1) -d , | sed s/,/\\\\\\\",\\\\\\\"/g)'\\\"'\\]
           -o config.batch && \
         sawadm genesis \
           config-genesis.batch config.batch && \
         ls /var/lib/sawtooth; \
       fi && \
-      export PEERS=$$(for host in $$(ls /shared_data -1); do \
+      export PEERS=$$(for host in $$(ls /shared_data/validators -1); do \
             if [ $$host != $$(hostname) ]; then \
               echo \\\"tcp://$$host:8800\\\"; \
             fi; done | tr \\\"\n\\\" \\\",\\\" | sed s\\/,$$\\/\\\n\\/); \
@@ -96,7 +101,19 @@ services:
 
   rest-api:
     image: sawtooth-rest-api
-    command: sawtooth-rest-api --connect tcp://validator:4004 --bind rest-api:8008
+    command: "bash -c \"
+      if [ ! -e /shared_data/rest_apis/$$(hostname) ]; then \
+        touch /shared_data/rest_apis/$$(hostname);
+      fi && \
+      sawtooth-rest-api --connect tcp://validator:4004 --bind $$(hostname):8008 \
+    \""
+    volumes:
+      - raft_shared_data:/shared_data
+    networks:
+      default:
+      rest_apis:
+    expose:
+      - 8008
     stop_signal: SIGKILL
 
   intkey-tp-python:

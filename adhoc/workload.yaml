@@ -15,35 +15,35 @@
 
 version: "3.6"
 
+# Validators across all compose files join this docker network for inter-node
+# communication
+networks:
+  rest_apis:
+    external:
+      name: raft_rest_apis
+
 volumes:
   raft_shared_data:
-    name: raft_shared_data
-
-networks:
-  validators:
-    name: raft_validators
-  rest_apis:
-    name: raft_rest_apis
+    external: true
 
 services:
-  admin:
-    build:
-      context: .
-      dockerfile: admin.Dockerfile
-    networks:
-      validators:
-      rest_apis:
+
+  workload:
+    image: sawtooth-intkey-workload
+    command: "bash -c \"\
+      export TARGETS=$$(\
+        for target in $$(ls /shared_data/rest_apis -1); do \
+          echo \\\"http://$$target:8008\\\"; \
+        done | tr \\\"\n\\\" \\\",\\\" | sed s\\/,$$\\/\\\n\\/); \
+      echo \\\"-- TARGETS \\\" && echo \\\"TARGETS=$$TARGETS\\\"; \
+      intkey-workload \
+        --key-file /shared_data/keys/workload.priv \
+        --rate ${RATE:-1} \
+        --urls $$TARGETS \
+    \""
     volumes:
       - raft_shared_data:/shared_data
-    command: |
-      bash -c "
-        rm -rf /shared_data/* &&
-        ls /shared_data &&
-        mkdir -p /shared_data/validators &&
-        mkdir -p /shared_data/rest_apis &&
-        mkdir -p /shared_data/keys &&
-        sawtooth keygen --key-dir /shared_data/keys workload &&
-        sawtooth keygen --key-dir /shared_data/keys settings &&
-        tail -f /dev/null
-      "
+    networks:
+      default:
+      rest_apis:
     stop_signal: SIGKILL
