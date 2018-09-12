@@ -74,10 +74,17 @@ impl Storage for FsStorage {
                     if idx == 0 {
                         Ok(0)
                     } else if (idx + 1) == self.first_index()? {
-                        Ok(read_compacted_term(&self.data_dir)?)
+                        match read_compacted_term(&self.data_dir)? {
+                            0 => err_unavailable(),
+                            compacted => Ok(compacted),
+                        }
                     } else {
-                        err_compacted()
+                        match read_compacted_term(&self.data_dir)? {
+                            0 => err_unavailable(),
+                            _ => err_compacted(),
+                        }
                     }
+
                 } else {
                     Err(raft::Error::from(err))
                 }
@@ -553,6 +560,8 @@ mod tests {
         let mem_storage = MemStorage::new();
 
         assert_eq!(mem_storage.term(0), fs_storage.term(0));
+        assert_eq!(mem_storage.term(1), fs_storage.term(1));
+        assert_eq!(mem_storage.term(2), fs_storage.term(2));
         assert_eq!(mem_storage.last_index(), fs_storage.last_index());
         assert_eq!(mem_storage.first_index(), fs_storage.first_index());
 
