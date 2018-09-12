@@ -42,7 +42,7 @@ pub trait StorageExt: Storage {
     /// Append the new entries to storage
     fn append(&self, ents: &[Entry]) -> Result<(), Error>;
 
-    fn describe() -> &'static str;
+    fn describe() -> String;
 }
 
 impl StorageExt for MemStorage {
@@ -72,7 +72,7 @@ impl StorageExt for MemStorage {
         self.wl().append(ents)
     }
 
-    fn describe() -> &'static str {
-        "in-memory storage"
+    fn describe() -> String {
+        "in-memory storage".into()
     }
 }

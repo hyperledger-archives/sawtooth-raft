@@ -171,8 +171,8 @@ impl<S: StorageExt> StorageExt for CachedStorage<S> {
         })
     }
 
-    fn describe() -> &'static str {
-        "file-system backed persistent storage with in-memory cache"
+    fn describe() -> String {
+        format!("cached storage: {}", S::describe())
     }
 }
 

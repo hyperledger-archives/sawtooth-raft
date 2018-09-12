@@ -196,8 +196,8 @@ impl StorageExt for FsStorage {
         Ok(())
     }
 
-    fn describe() -> &'static str {
-        "file-system backed persistent storage"
+    fn describe() -> String {
+        "file-system backed persistent storage".into()
     }
 }
 
