@@ -50,7 +50,7 @@ impl<S: StorageExt> RaftEngineConfig<S> {
     }
 }
 
-fn create_storage() -> CachedStorage<impl StorageExt> {
+fn create_storage() -> impl StorageExt {
     CachedStorage::new(
         FsStorage::with_data_dir(get_path_config().data_dir).expect("Failed to create FsStorage")
     )
