@@ -66,6 +66,7 @@ node ('master') {
             // Build Raft
             stage("Build Raft") {
               sh "docker-compose up --build --abort-on-container-exit --force-recreate --renew-anon-volumes --exit-code-from raft-engine"
+              sh "docker-compose -f docker-compose-installed.yaml build"
             }
 
             // Run the tests
@@ -80,7 +81,9 @@ node ('master') {
             }
 
             stage("Archive Build Artifacts") {
-                archiveArtifacts artifacts: 'docs/build/html/**, docs/build/latex/*.pdf'
+                sh 'docker-compose -f copy-debs.yaml up'
+                sh 'docker-compose -f copy-debs.yaml down'
+                archiveArtifacts artifacts: 'sawtooth-raft*amd64.deb, docs/build/html/**, docs/build/latex/*.pdf'
             }
         }
     }
