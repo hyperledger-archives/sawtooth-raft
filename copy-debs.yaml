@@ -5,7 +5,7 @@ volumes:
 
 services:
   raft-engine:
-    image: sawtooth-raft-installed:$ISOLATION_ID
+    image: sawtooth-raft-engine:$ISOLATION_ID
     build:
       context: .
     volumes:
