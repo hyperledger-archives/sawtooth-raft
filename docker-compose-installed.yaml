@@ -1,0 +1,11 @@
+version: '3.6'
+
+volumes:
+  cargo-registry:
+
+services:
+  raft-engine:
+    image: sawtooth-raft-engine:$ISOLATION_ID
+    build:
+      context: .
+      dockerfile: Dockerfile-installed
