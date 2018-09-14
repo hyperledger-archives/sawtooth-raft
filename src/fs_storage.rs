@@ -18,6 +18,7 @@
 use std::fs;
 use std::io;
 use std::mem;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use protobuf::{self, Message as ProtobufMessage};
@@ -52,18 +53,30 @@ impl Storage for FsStorage {
     }
 
     fn entries(&self, low: u64, high: u64, _max_size: u64) -> Result<Vec<Entry>, raft::Error> {
-        let mut entries: Vec<Entry> = read_entries_sorted_by_index(&self.entries_dir)?;
-
-        if entries.len() == 0 || low < first_entry_index(&entries) {
+        if low > high {
             return err_compacted();
         }
 
-        if high > last_entry_index(&entries) + 1 {
+        let first_entry_index = read_first_index(&self.data_dir)?;
+        let last_entry_index = read_last_index(&self.data_dir)?;
+
+        if first_entry_index > last_entry_index {
+            return err_compacted();
+        }
+
+        if low == high {
+            return Ok(Vec::new());
+        }
+
+        if low < first_entry_index {
+            return err_compacted();
+        }
+
+        if high > last_entry_index + 1 {
             return err_unavailable();
         }
 
-        entries.retain(|entry| entry.index >= low && entry.index < high);
-        Ok(entries)
+        Ok(read_entries(&self.entries_dir, Some(low..high))?)
     }
 
     fn term(&self, idx: u64) -> Result<u64, raft::Error> {
@@ -93,13 +106,11 @@ impl Storage for FsStorage {
     }
 
     fn first_index(&self) -> Result<u64, raft::Error> {
-        let entries = read_entries_sorted_by_index(&self.entries_dir)?;
-        Ok(first_entry_index(&entries))
+        Ok(read_first_index(&self.data_dir)?)
     }
 
     fn last_index(&self) -> Result<u64, raft::Error> {
-        let entries = read_entries_sorted_by_index(&self.entries_dir)?;
-        Ok(last_entry_index(&entries))
+        Ok(read_last_index(&self.data_dir)?)
     }
 
     fn snapshot(&self) -> Result<Snapshot, raft::Error> {
@@ -126,8 +137,7 @@ impl StorageExt for FsStorage {
         }
 
         // Validate the snapshot can be created
-        let entries = read_entries_sorted_by_index(&self.entries_dir)?;
-        let last_index = last_entry_index(&entries);
+        let last_index = read_last_index(&self.data_dir)?;
         if index > last_index {
             // Panics to mirror behavior in MemStorage
             panic!(
@@ -139,10 +149,9 @@ impl StorageExt for FsStorage {
 
         snapshot.mut_metadata().set_index(index);
 
-        let term = entries.iter()
-            .find(|entry| entry.index == index)
-            .map(|entry| entry.term)
-            .expect("Entry log integrity error: Entry not found, but already checked bounds.");
+        let term = read_entry(&self.entries_dir, index)
+            .expect("Entry log integrity error: Entry not found, but already checked bounds.")
+            .get_term();
 
         snapshot.mut_metadata().set_term(term);
 
@@ -171,22 +180,20 @@ impl StorageExt for FsStorage {
     }
 
     fn compact(&self, compact_index: u64) -> Result<(), raft::Error> {
-        let entries = read_entries_sorted_by_index(&self.entries_dir)?;
-        if entries.len() == 0 {
+        let first_entry_index = read_first_index(&self.data_dir)?;
+
+        if first_entry_index > compact_index {
             return err_compacted();
         }
 
-        if first_entry_index(&entries) > compact_index {
-            return err_compacted();
-        }
-
-        let delete: Vec<Entry> = entries
-            .into_iter()
-            .take_while(|entry| entry.index <= compact_index)
-            .collect();
+        let delete: Vec<Entry> = read_entries(
+            &self.entries_dir,
+            Some(first_entry_index..(compact_index + 1)),
+        )?;
 
         if let Some(last) = delete.last() {
             write_compacted_term(&self.data_dir, last.index)?;
+            write_first_index(&self.data_dir, last.get_index() + 1)?;
         }
 
         Ok(delete
@@ -200,6 +207,11 @@ impl StorageExt for FsStorage {
             .iter()
             .map(|entry| write_entry(&self.entries_dir, entry))
             .collect::<Result<Vec<()>, io::Error>>()?;
+
+        if let Some(last_entry) = entries.last() {
+            write_last_index(&self.data_dir, last_entry.get_index())?;
+        }
+
         Ok(())
     }
 
@@ -210,14 +222,6 @@ impl StorageExt for FsStorage {
 
 
 // Helper functions
-
-fn first_entry_index<T: AsRef<[Entry]>>(entries: T) -> u64 {
-    entries.as_ref().first().map(|entry| entry.index).unwrap_or(1)
-}
-
-fn last_entry_index<T: AsRef<[Entry]>>(entries: T) -> u64 {
-    entries.as_ref().last().map(|entry| entry.index).unwrap_or(0)
-}
 
 fn init_raft_state_if_missing<P: AsRef<Path>>(data_dir: P) -> io::Result<()> {
     if let Err(err) = read_raft_state(&data_dir) {
@@ -245,12 +249,6 @@ fn err_snapshot_out_of_date<T>() -> Result<T, raft::Error> {
 
 
 // Readers
-
-fn read_entries_sorted_by_index<P: AsRef<Path>>(entries_dir: P) -> io::Result<Vec<Entry>> {
-    let mut entries = read_entries(entries_dir.as_ref())?;
-    entries.sort_unstable_by(|a, b| a.index.cmp(&b.index));
-    Ok(entries)
-}
 
 fn read_raft_state<P: AsRef<Path>>(data_dir: P) -> io::Result<RaftState> {
     Ok(RaftState {
@@ -281,12 +279,29 @@ fn read_compacted_term<P: AsRef<Path>>(data_dir: P) -> io::Result<u64> {
     read_u64_from_file(data_dir.as_ref().join("term"))
 }
 
+fn read_first_index<P: AsRef<Path>>(data_dir: P) -> io::Result<u64> {
+    read_u64_from_file(data_dir.as_ref().join("first"))
+}
+
+fn read_last_index<P: AsRef<Path>>(data_dir: P) -> io::Result<u64> {
+    read_u64_from_file(data_dir.as_ref().join("last"))
+}
+
 fn read_entry<P: AsRef<Path>>(entries_dir: P, index: u64) -> io::Result<Entry> {
     read_pb_from_file(entries_dir.as_ref().join(format!("{}", index)))
 }
 
-fn read_entries<P: AsRef<Path>>(entries_dir: P) -> io::Result<Vec<Entry>> {
-    read_and_map_dir(entries_dir.as_ref(), dir_entry_to_raft_entry)
+fn read_entries<P: AsRef<Path>>(entries_dir: P, range: Option<Range<u64>>) -> io::Result<Vec<Entry>> {
+    match range {
+        Some(range) => {
+            range.map(|index| read_entry(entries_dir.as_ref(), index)).collect()
+        }
+        None => {
+            let mut entries = read_and_map_dir(entries_dir.as_ref(), dir_entry_to_raft_entry)?;
+            entries.sort_unstable_by(|a, b| a.index.cmp(&b.index));
+            Ok(entries)
+        }
+    }
 }
 
 
@@ -301,6 +316,8 @@ fn dir_entry_to_raft_entry(dir_entry: fs::DirEntry) -> io::Result<Entry> {
 
 fn init_raft_state<P: AsRef<Path>>(data_dir: P) -> io::Result<()> {
     write_compacted_term(&data_dir, 0)?;
+    write_first_index(&data_dir, 1)?;
+    write_last_index(&data_dir, 0)?;
     write_hard_state(&data_dir, &HardState::new())?;
     write_snapshot(&data_dir, &Snapshot::new())
 }
@@ -315,6 +332,14 @@ fn write_snapshot<P: AsRef<Path>>(data_dir: P, snapshot: &Snapshot) -> io::Resul
 
 fn write_compacted_term<P: AsRef<Path>>(data_dir: P, term: u64) -> io::Result<()> {
     write_u64_to_file(data_dir.as_ref().join("term"), term)
+}
+
+fn write_first_index<P: AsRef<Path>>(data_dir: P, first: u64) -> io::Result<()> {
+    write_u64_to_file(data_dir.as_ref().join("first"), first)
+}
+
+fn write_last_index<P: AsRef<Path>>(data_dir: P, last: u64) -> io::Result<()> {
+    write_u64_to_file(data_dir.as_ref().join("last"), last)
 }
 
 fn write_entry<P: AsRef<Path>>(entries_dir: P, entry: &Entry) -> io::Result<()> {
