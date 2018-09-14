@@ -8,9 +8,4 @@ services:
     image: sawtooth-raft-engine:$ISOLATION_ID
     build:
       context: .
-    volumes:
-      - .:/build/debs
-    command: |
-      bash -c "
-        cp /tmp/*.deb /build/debs
-      "
+      dockerfile: Dockerfile-installed
