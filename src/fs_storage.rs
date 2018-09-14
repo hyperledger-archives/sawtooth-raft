@@ -176,13 +176,13 @@ impl StorageExt for FsStorage {
             return err_compacted();
         }
 
-        if first_entry_index(&entries) >= compact_index {
+        if first_entry_index(&entries) > compact_index {
             return err_compacted();
         }
 
         let delete: Vec<Entry> = entries
             .into_iter()
-            .take_while(|entry| entry.index < compact_index)
+            .take_while(|entry| entry.index <= compact_index)
             .collect();
 
         if let Some(last) = delete.last() {

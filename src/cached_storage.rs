@@ -77,7 +77,7 @@ impl Cache {
     }
 
     fn compact(&mut self, compact_index: u64) {
-        self.entries.retain(|entry| entry.index >= compact_index);
+        self.entries.retain(|entry| entry.index > compact_index);
     }
 
     fn append(&mut self, entries: &[Entry]) {
