@@ -192,7 +192,7 @@ impl StorageExt for FsStorage {
         )?;
 
         if let Some(last) = delete.last() {
-            write_compacted_term(&self.data_dir, last.index)?;
+            write_compacted_term(&self.data_dir, last.get_term())?;
             write_first_index(&self.data_dir, last.get_index() + 1)?;
         }
 
