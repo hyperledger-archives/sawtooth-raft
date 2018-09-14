@@ -573,6 +573,9 @@ mod tests {
         populate_storage(&mem_storage, (1..6).collect());
         populate_storage(&fs_storage, (1..6).collect());
 
+        assert_eq!(mem_storage.first_index(), fs_storage.first_index());
+        assert_eq!(mem_storage.last_index(), fs_storage.last_index());
+
         // NOTE: This starts at i=1 because I believe the implementation of MemStorage does the
         // wrong thing for (0, 0)
         for i in 1..6 {
@@ -595,6 +598,9 @@ mod tests {
 
         for i in 2..5 {
             assert_eq!(mem_storage.compact(i), fs_storage.compact(i));
+
+            assert_eq!(mem_storage.first_index(), fs_storage.first_index());
+            assert_eq!(mem_storage.last_index(), fs_storage.last_index());
         }
 
         assert_eq!(mem_storage.snapshot(), fs_storage.snapshot());
