@@ -112,17 +112,7 @@ pub fn load_raft_config(
         }
     }
 
-    let peers_setting_value = settings
-        .get("sawtooth.consensus.raft.peers")
-        .expect("'sawtooth.consensus.raft.peers' must be set to use Raft");
-
-    let peers: Vec<String> = serde_json::from_str(peers_setting_value)
-        .expect("Invalid value at 'sawtooth.consensus.raft.peers'");
-
-    let peers: Vec<PeerId> = peers
-        .into_iter()
-        .map(|s| PeerId::from(hex::decode(s).expect("Peer id not valid hex")))
-        .collect();
+    let peers = get_peers_from_settings(&settings);
 
     let ids: Vec<u64> = peers.iter().map(peer_id_to_raft_id).collect();
 
@@ -141,4 +131,18 @@ pub fn peer_id_to_raft_id(peer_id: &PeerId) -> u64 {
         u += (u64::from(bytes[bytes.len() - 1 - i])) << (i * 8)
     }
     u
+}
+
+/// Get the peers as a Vec<PeerId> from settings
+pub fn get_peers_from_settings(settings: &HashMap<String, String>) -> Vec<PeerId> {
+    let peers_setting_value = settings
+        .get("sawtooth.consensus.raft.peers")
+        .expect("'sawtooth.consensus.raft.peers' must be set to use Raft");
+
+    let peers: Vec<String> = serde_json::from_str(peers_setting_value)
+        .expect("Invalid value at 'sawtooth.consensus.raft.peers'");
+
+    peers.into_iter()
+        .map(|s| PeerId::from(hex::decode(s).expect("Peer id not valid hex")))
+        .collect()
 }

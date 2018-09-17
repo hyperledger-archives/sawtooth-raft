@@ -15,13 +15,16 @@
  * ------------------------------------------------------------------------------
  */
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::iter::FromIterator;
 use std::time::{Duration, Instant};
 
 use protobuf::{self, Message as ProtobufMessage, ProtobufError};
 use raft::{
     self,
     eraftpb::{
+        ConfChange,
+        ConfChangeType,
         EntryType,
         Message as RaftMessage,
     },
@@ -35,7 +38,7 @@ use sawtooth_sdk::consensus::{
 
 use block_queue::BlockQueue;
 use storage::StorageExt;
-use config::peer_id_to_raft_id;
+use config::{peer_id_to_raft_id, get_peers_from_settings};
 
 /// Possible states a leader node can be in
 ///
@@ -51,6 +54,7 @@ enum LeaderState {
     Validating(BlockId),
     Proposing(BlockId),
     Committing(BlockId),
+    ChangingConfig,
 }
 
 enum FollowerState {
@@ -142,9 +146,15 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             },
             _ => false,
         } {
-            debug!("Leader({:?}) transition to Building block {:?}", self.peer_id, block_id);
-            self.leader_state = Some(LeaderState::Building(Instant::now()));
-            self.service.initialize_block(None).expect("Failed to initialize block");
+            if let Some(change) = self.check_for_conf_change(block_id.clone()) {
+                debug!("Leader({:?}) transition to ChangingConfig", self.peer_id);
+                self.leader_state = Some(LeaderState::ChangingConfig);
+                self.raw_node.propose_conf_change(vec![], change).unwrap();
+            } else {
+                debug!("Leader({:?}) transition to Building block {:?}", self.peer_id, block_id);
+                self.leader_state = Some(LeaderState::Building(Instant::now()));
+                self.service.initialize_block(None).expect("Failed to initialize block");
+            }
         } else {
             info!("Peer({:?}) committed block {:?}", self.peer_id, block_id);
         }
@@ -289,6 +299,17 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
                 if entry.get_entry_type() == EntryType::EntryNormal {
                     let block_id: BlockId = BlockId::from(Vec::from(entry.get_data()));
                     self.block_queue.add_block_commit(block_id);
+                } else if entry.get_entry_type() == EntryType::EntryConfChange && entry.get_term() != 1 {
+                    let change: ConfChange = protobuf::parse_from_bytes(entry.get_data())
+                        .expect("Failed to parse ConfChange");
+
+                    self.apply_conf_change(&change);
+
+                    if let Some(LeaderState::ChangingConfig) = self.leader_state {
+                        debug!("Leader({:?}) transition to Building block", self.peer_id);
+                        self.leader_state = Some(LeaderState::Building(Instant::now()));
+                        self.service.initialize_block(None).expect("Failed to initialize block");
+                    }
                 }
             }
         }
@@ -332,6 +353,67 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
                 _ => (),
             }
         }
+    }
+
+    fn check_for_conf_change(&mut self, block_id: BlockId) -> Option<ConfChange> {
+        // Get list of peers from settings
+        let settings = self.service
+            .get_settings(block_id, vec![String::from("sawtooth.consensus.raft.peers")])
+            .expect("Failed to get settings");
+        let peers = get_peers_from_settings(&settings);
+        let peers: HashSet<PeerId> = HashSet::from_iter(peers);
+
+        // Check if membership has changed
+        let old_peers: HashSet<PeerId> = HashSet::from_iter(self.raft_id_to_peer_id.values().cloned());
+        let difference: HashSet<PeerId> = peers.symmetric_difference(&old_peers).cloned().collect();
+
+        if !difference.is_empty() {
+            if difference.len() > 1 {
+                panic!("More than one node's membership has changed; only one change can be processed at a time.");
+            }
+
+            // The raft-rs library can only add or delete one node at a time, so there should
+            // only be one item in this iterator
+            let peer_id = difference.iter().nth(0).expect("Difference cannot be empty here.");
+            // Initialize change
+            let mut change = ConfChange::new();
+            change.set_node_id(peer_id_to_raft_id(&peer_id));
+
+            // Check if adding or removing Node
+            if peers.len() > old_peers.len() {
+                change.set_change_type(ConfChangeType::AddNode);
+                // Include peer ID in context so node can be added to raft_id_to_peer_id map later
+                change.set_context(Vec::from(peer_id.clone()));
+            } else if peers.len() < old_peers.len() {
+                change.set_change_type(ConfChangeType::RemoveNode);
+            }
+
+            info!("Leader({:?}) detected configuration change {:?}", self.peer_id, change);
+            return Some(change);
+        }
+
+        None
+    }
+
+    fn apply_conf_change(&mut self, change: &ConfChange) {
+        info!("Configuration change received: {:?}", change);
+        let raft_id = change.get_node_id();
+
+        // Update raft_id_to_peer_id according to change
+        match change.get_change_type() {
+            ConfChangeType::RemoveNode => {
+                self.raft_id_to_peer_id.remove(&raft_id).unwrap();
+            },
+            ConfChangeType::AddNode => {
+                self.raft_id_to_peer_id.insert(
+                    raft_id,
+                    PeerId::from(Vec::from(change.get_context()))
+                );
+            },
+            _ => {}
+        }
+
+        self.raw_node.apply_conf_change(&change);
     }
 }
 
