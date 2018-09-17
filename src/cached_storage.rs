@@ -15,132 +15,215 @@
  * ------------------------------------------------------------------------------
  */
 
-use std::collections::VecDeque;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::ops::Range;
+use std::cell::RefCell;
 
+use uluru;
 use raft::{
     self, eraftpb::{ConfState, Entry, HardState, Snapshot}, RaftState, Storage,
 };
 
 use storage::StorageExt;
 
-pub const CACHE_SIZE: u64 = 10000;
+const CACHE_SIZE: usize = 16;
 
-struct Cache {
-    entries: VecDeque<Entry>,
-    _cache_size: u64,
+#[derive(Default)]
+struct EntryCache(uluru::LRUCache<[uluru::Entry<Entry>; CACHE_SIZE]>);
+
+impl EntryCache {
+    fn get(&mut self, index: u64) -> Option<Entry> {
+        self.0.find(|entry| entry.index == index).cloned()
+    }
+
+    fn insert(&mut self, entry: Entry) {
+        self.0.insert(entry)
+    }
+
+    fn clear(&mut self) {
+        self.0.evict_all()
+    }
+
+    fn range(&mut self, range: Range<u64>) -> Option<Vec<Entry>> {
+        let mut entries: Vec<Entry> = Vec::new();
+        for index in range {
+            if let Some(entry) = self.get(index) {
+                entries.push(entry);
+            } else {
+                return None;
+            }
+        }
+        Some(entries)
+    }
 }
 
-impl Cache {
-    fn with_cache_size(cache_size: u64) -> Cache {
-        Cache {
-            entries: VecDeque::new(),
-            _cache_size: cache_size,
+#[derive(Default)]
+struct TermCache(uluru::LRUCache<[uluru::Entry<(u64, u64)>; CACHE_SIZE]>);
+
+impl TermCache {
+    fn get(&mut self, idx: u64) -> Option<u64> {
+        self.0.find(|(index, _term)| *index == idx).map(|(_index, term)| *term)
+    }
+
+    fn insert(&mut self, index: u64, term: u64) {
+        self.0.insert((index, term))
+    }
+
+    fn clear(&mut self) {
+        self.0.evict_all()
+    }
+}
+
+struct StorageCache {
+    pub initial_state: Option<RaftState>,
+    pub first_index: Option<u64>,
+    pub last_index: Option<u64>,
+    pub snapshot: Option<Snapshot>,
+    // We use Option<_> here because we always need to call down to the underlying storage after
+    // reset, even if the call can be fulfilled without doing so, to handle startup edge cases.
+    // For example, a call with an empty but valid range would return an empty Vec<_> if not for
+    // this Option<_>, even though the underlying storage might return Err(Unavailable) because of
+    // an empty log.
+    pub entries: Option<EntryCache>,
+    pub terms: TermCache,
+}
+
+impl Default for StorageCache {
+    fn default() -> Self {
+        StorageCache {
+            initial_state: None,
+            first_index: None,
+            last_index: None,
+            snapshot: None,
+            entries: None,
+            terms: Default::default(),
         }
     }
+}
 
-    fn first_index(&self) -> u64 {
-        match self.entries.front() {
-            Some(entry) => entry.index,
-            None => 1,
+impl StorageCache {
+    fn reset(&mut self) {
+        self.initial_state = None;
+        self.first_index = None;
+        self.last_index = None;
+        self.snapshot = None;
+        if let Some(ref mut entries) = self.entries {
+            entries.clear();
         }
-    }
-
-    fn last_index(&self) -> u64 {
-        match self.entries.back() {
-            Some(entry) => entry.index,
-            None => 0,
-        }
-    }
-
-    fn entries(&self, low: u64, high: u64, _max_size: u64) -> Result<Vec<Entry>, raft::Error> {
-        if self.entries.is_empty() || low < self.first_index() {
-            return Err(raft::Error::Store(raft::StorageError::Compacted));
-        }
-
-        if high > self.last_index() + 1 {
-            return Err(raft::Error::Store(raft::StorageError::Unavailable));
-        }
-
-        Ok(self.entries
-            .iter()
-            .cloned()
-            .filter(|entry| entry.index >= low && entry.index < high)
-            .collect())
-    }
-
-    fn term(&self, idx: u64) -> Option<u64> {
-        self.entries
-            .iter()
-            .find(|ref entry| entry.index == idx)
-            .map(|entry| entry.term)
-    }
-
-    fn compact(&mut self, compact_index: u64) {
-        self.entries.retain(|entry| entry.index > compact_index);
-    }
-
-    fn append(&mut self, entries: &[Entry]) {
-        entries
-            .into_iter()
-            .for_each(|entry| self.entries.push_back(entry.clone()));
+        self.terms.clear();
     }
 }
 
 pub struct CachedStorage<S: StorageExt> {
     storage: S,
-    cache: Arc<RwLock<Cache>>,
+    cache: RefCell<StorageCache>,
 }
 
 impl<S: StorageExt> CachedStorage<S> {
     pub fn new(storage: S) -> Self {
         CachedStorage {
             storage,
-            cache: Arc::new(RwLock::new(Cache::with_cache_size(CACHE_SIZE))),
+            cache: Default::default(),
         }
-    }
-
-    fn cache_read(&self) -> RwLockReadGuard<Cache> {
-        self.cache.read().unwrap()
-    }
-
-    fn cache_write(&self) -> RwLockWriteGuard<Cache> {
-        self.cache.write().unwrap()
     }
 }
 
 impl<S: StorageExt> Storage for CachedStorage<S> {
     fn initial_state(&self) -> Result<RaftState, raft::Error> {
-        self.storage.initial_state()
+        let mut cache = self.cache.borrow_mut();
+        if let Some(ref initial_state) = cache.initial_state {
+            return Ok(initial_state.clone());
+        }
+
+        self.storage.initial_state().map(|initial_state| {
+            cache.initial_state = Some(initial_state.clone());
+            initial_state
+        })
     }
 
-    fn entries(&self, low: u64, high: u64, _max_size: u64) -> Result<Vec<Entry>, raft::Error> {
-        self.cache_read().entries(low, high, _max_size)
+    fn entries(&self, low: u64, high: u64, max_size: u64) -> Result<Vec<Entry>, raft::Error> {
+        let mut cache = self.cache.borrow_mut();
+
+        if let Some(ref mut entries) = cache.entries {
+            return match entries.range(low..high) {
+                Some(range) => {
+                    for entry in range.iter().cloned() {
+                        entries.insert(entry);
+                    }
+                    Ok(range)
+                }
+                None => {
+                    self.storage.entries(low, high, max_size)
+                }
+            }
+        }
+
+        match self.storage.entries(low, high, max_size) {
+            Ok(range) => {
+                let mut entries = EntryCache::default();
+                for entry in range.iter().cloned() {
+                    entries.insert(entry);
+                }
+                cache.entries = Some(entries);
+                Ok(range)
+            }
+            Err(err) => Err(err),
+        }
     }
 
     fn term(&self, idx: u64) -> Result<u64, raft::Error> {
-        match self.cache_read().term(idx) {
-            Some(term) => Ok(term),
-            None => self.storage.term(idx),
+        let mut cache = self.cache.borrow_mut();
+        if let Some(term) = cache.terms.get(idx) {
+            Ok(term)
+        } else {
+            self.storage.term(idx).map(|term| {
+                cache.terms.insert(idx, term);
+                term
+            })
         }
     }
 
     fn first_index(&self) -> Result<u64, raft::Error> {
-        Ok(self.cache_read().first_index())
+        let mut cache = self.cache.borrow_mut();
+        if let Some(ref first_index) = cache.first_index {
+            return Ok(*first_index);
+        }
+
+        self.storage.first_index().map(|first_index| {
+            cache.first_index = Some(first_index);
+            first_index
+        })
     }
 
     fn last_index(&self) -> Result<u64, raft::Error> {
-        Ok(self.cache_read().last_index())
+        let mut cache = self.cache.borrow_mut();
+        if let Some(ref last_index) = cache.last_index {
+            return Ok(*last_index);
+        }
+
+
+        self.storage.last_index().map(|last_index| {
+            cache.last_index = Some(last_index);
+            last_index
+        })
     }
 
     fn snapshot(&self) -> Result<Snapshot, raft::Error> {
-        self.storage.snapshot()
+        let mut cache = self.cache.borrow_mut();
+        if let Some(ref snapshot) = cache.snapshot {
+            return Ok(snapshot.clone());
+        }
+
+        self.storage.snapshot().map(|snapshot| {
+            cache.snapshot = Some(snapshot.clone());
+            snapshot
+        })
     }
 }
 
 impl<S: StorageExt> StorageExt for CachedStorage<S> {
     fn set_hardstate(&self, hard_state: &HardState) {
-        self.storage.set_hardstate(hard_state);
+        self.cache.borrow_mut().reset();
+        self.storage.set_hardstate(hard_state)
     }
 
     fn create_snapshot(
@@ -149,32 +232,30 @@ impl<S: StorageExt> StorageExt for CachedStorage<S> {
         conf_state: Option<&ConfState>,
         data: Vec<u8>,
     ) -> Result<Snapshot, raft::Error> {
+        self.cache.borrow_mut().reset();
         self.storage.create_snapshot(index, conf_state, data)
     }
 
     fn apply_snapshot(&self, snapshot: &Snapshot) -> Result<(), raft::Error> {
-        self.storage.apply_snapshot(snapshot).map(|_| {
-            let compact_index = snapshot.get_metadata().get_index();
-            self.cache_write().compact(compact_index);
-        })
+        self.cache.borrow_mut().reset();
+        self.storage.apply_snapshot(snapshot)
     }
 
     fn compact(&self, compact_index: u64) -> Result<(), raft::Error> {
-        self.storage.compact(compact_index).map(|_| {
-            self.cache_write().compact(compact_index);
-        })
+        self.cache.borrow_mut().reset();
+        self.storage.compact(compact_index)
     }
 
     fn append(&self, entries: &[Entry]) -> Result<(), raft::Error> {
-        self.storage.append(entries).map(|_| {
-            self.cache_write().append(entries);
-        })
+        self.cache.borrow_mut().reset();
+        self.storage.append(entries)
     }
 
     fn describe() -> String {
         format!("cached storage: {}", S::describe())
     }
 }
+
 
 #[cfg(test)]
 mod tests {
