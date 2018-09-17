@@ -40,7 +40,7 @@ services:
       fi && \
       echo \\\"-- /var/lib/sawtooth\\\" && ls /var/lib/sawtooth && \
       echo \\\"-- /shared_data/validators \\\" && ls /shared_data/validators && \
-      if [ ${GENESIS:-0} != 0 ]; then \
+      if [ ${GENESIS:-0} != 0 -a ! -e /shared_data/genesis.batch ]; then \
         echo \\\"Running Genesis\\\" && \
         sawset genesis \
           -k /shared_data/keys/settings.priv \
@@ -52,6 +52,7 @@ services:
           -o config.batch && \
         sawadm genesis \
           config-genesis.batch config.batch && \
+        cp /var/lib/sawtooth/genesis.batch /shared_data/genesis.batch && \
         ls /var/lib/sawtooth; \
       fi && \
       export PEERS=$$(for host in $$(ls /shared_data/validators -1); do \

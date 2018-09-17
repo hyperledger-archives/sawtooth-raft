@@ -77,7 +77,7 @@ impl Cache {
     }
 
     fn compact(&mut self, compact_index: u64) {
-        self.entries.retain(|entry| entry.index >= compact_index);
+        self.entries.retain(|entry| entry.index > compact_index);
     }
 
     fn append(&mut self, entries: &[Entry]) {
@@ -171,8 +171,8 @@ impl<S: StorageExt> StorageExt for CachedStorage<S> {
         })
     }
 
-    fn describe() -> &'static str {
-        "file-system backed persistent storage with in-memory cache"
+    fn describe() -> String {
+        format!("cached storage: {}", S::describe())
     }
 }
 
@@ -244,13 +244,13 @@ mod tests {
         }
 
         // Write entries 1-3
-        let entries = populate_storage(&storage, (0..4).collect());
+        let entries = populate_storage(&storage, (1..4).collect());
 
         // Verify we get the entries we wrote
-        for i in 0..4 {
+        for i in 1..4 {
             for j in i..4 {
                 assert_eq!(
-                    Ok(entries[i..j].to_vec()),
+                    Ok(entries[i-1..j-1].to_vec()),
                     storage.entries(i as u64, j as u64, MAX)
                 );
             }
@@ -265,7 +265,7 @@ mod tests {
         assert_eq!(Ok(0), storage.term(0));
 
         // Write some entries
-        let entries = populate_storage(&storage, (0..6).collect());
+        let entries = populate_storage(&storage, (1..6).collect());
 
         // Assert we get the right terms
         for entry in entries {
@@ -280,8 +280,12 @@ mod tests {
             Err(raft::Error::Store(raft::StorageError::Compacted)),
             storage.term(1)
         );
-        assert_eq!(Ok(2), storage.term(2));
+        assert_eq!(
+            Err(raft::Error::Store(raft::StorageError::Compacted)),
+            storage.term(2)
+        );
         assert_eq!(Ok(3), storage.term(3));
+        assert_eq!(Ok(4), storage.term(4));
     }
 
     #[test]
@@ -293,14 +297,14 @@ mod tests {
         assert_eq!(Ok(1), storage.first_index());
         assert_eq!(Ok(0), storage.last_index());
 
-        populate_storage(&storage, (0..6).collect());
+        populate_storage(&storage, (1..6).collect());
 
-        assert_eq!(Ok(0), storage.first_index());
+        assert_eq!(Ok(1), storage.first_index());
         assert_eq!(Ok(5), storage.last_index());
 
         storage.compact(3).unwrap();
 
-        assert_eq!(Ok(3), storage.first_index());
+        assert_eq!(Ok(4), storage.first_index());
         assert_eq!(Ok(5), storage.last_index());
     }
 
@@ -316,7 +320,7 @@ mod tests {
             storage.compact(0)
         );
 
-        let entries = populate_storage(&storage, (0..10).collect());
+        let entries = populate_storage(&storage, (1..11).collect());
 
         assert_eq!(
             Err(raft::Error::Store(raft::StorageError::Compacted)),
@@ -326,16 +330,16 @@ mod tests {
         assert_eq!(Ok(()), storage.compact(2));
         assert_eq!(
             Err(raft::Error::Store(raft::StorageError::Compacted)),
-            storage.entries(1, 2, MAX)
+            storage.entries(1, 3, MAX)
         );
-        assert_eq!(Ok(entries[2..10].to_vec()), storage.entries(2, 10, MAX));
+        assert_eq!(Ok(entries[2..9].to_vec()), storage.entries(3, 10, MAX));
 
         assert_eq!(Ok(()), storage.compact(4));
         assert_eq!(
             Err(raft::Error::Store(raft::StorageError::Compacted)),
-            storage.entries(2, 4, MAX)
+            storage.entries(2, 5, MAX)
         );
-        assert_eq!(Ok(entries[4..10].to_vec()), storage.entries(4, 10, MAX));
+        assert_eq!(Ok(entries[4..9].to_vec()), storage.entries(5, 10, MAX));
     }
 
     // Test that both implementations of StorageExt produce the same results
@@ -356,8 +360,11 @@ mod tests {
             );
         }
 
-        populate_storage(&mem_storage, (0..6).collect());
-        populate_storage(&cached_storage, (0..6).collect());
+        populate_storage(&mem_storage, (1..6).collect());
+        populate_storage(&cached_storage, (1..6).collect());
+
+        assert_eq!(mem_storage.first_index(), cached_storage.first_index());
+        assert_eq!(mem_storage.last_index(), cached_storage.last_index());
 
         // NOTE: This starts at i=1 because I believe the implementation of MemStorage does the
         // wrong thing for (0, 0)
@@ -388,6 +395,9 @@ mod tests {
 
         for i in 2..5 {
             assert_eq!(mem_storage.compact(i), cached_storage.compact(i));
+
+            assert_eq!(mem_storage.first_index(), cached_storage.first_index());
+            assert_eq!(mem_storage.last_index(), cached_storage.last_index());
         }
 
         assert_eq!(mem_storage.snapshot(), cached_storage.snapshot());
