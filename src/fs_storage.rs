@@ -407,31 +407,12 @@ mod tests {
 
     use tempdir::TempDir;
 
-    use raft::storage::MemStorage;
-
-    const MAX: u64 = u64::max_value();
-
-    fn create_entry(index: u64, term: u64) -> Entry {
-        let mut e = Entry::new();
-        e.set_term(term);
-        e.set_index(index);
-        e
-    }
-
-    fn create_entries(ids: Vec<u64>) -> Vec<Entry> {
-        ids.into_iter().map(|i| create_entry(i, i)).collect()
-    }
+    use storage::tests;
 
     fn create_temp_storage(name: &str) -> (TempDir, FsStorage) {
         let tmp = TempDir::new(name).unwrap();
         let storage = FsStorage::with_data_dir(tmp.path().into()).unwrap();
         (tmp, storage)
-    }
-
-    fn populate_storage<S: StorageExt>(storage: &S, ids: Vec<u64>) -> Vec<Entry> {
-        let entries = create_entries(ids);
-        storage.append(&entries).unwrap();
-        entries
     }
 
     // Test that read and write functions work
@@ -466,168 +447,40 @@ mod tests {
     }
 
 
-    // Storage trait tests
-
-    // Test that state is initialize when FsStorage is created
     #[test]
     fn test_storage_initial_state() {
         let (_tmp, storage) = create_temp_storage("test_storage_initial_state");
-
-        let RaftState {
-            hard_state,
-            conf_state,
-        } = storage.initial_state().unwrap();
-
-        assert_eq!(HardState::default(), hard_state);
-        assert_eq!(ConfState::default(), conf_state);
+        tests::test_storage_initial_state(storage);
     }
 
     #[test]
     fn test_storage_entries() {
         let (_tmp, storage) = create_temp_storage("test_storage_entries");
-
-        // Assert that we get an error no matter what when there are no entries
-        for i in 0..4 {
-            for j in 0..4 {
-                assert_eq!(
-                    err_compacted(),
-                    storage.entries(i, j, MAX)
-                );
-            }
-        }
-
-        // Write entries 1-3
-        let entries = populate_storage(&storage, (1..4).collect());
-
-        // Verify we get the entries we wrote
-        for i in 1..4 {
-            for j in i..4 {
-                assert_eq!(
-                    Ok(entries[i-1..j-1].to_vec()),
-                    storage.entries(i as u64, j as u64, MAX)
-                );
-            }
-        }
+        tests::test_storage_entries(storage);
     }
 
     #[test]
     fn test_storage_term() {
         let (_tmp, storage) = create_temp_storage("test_storage_term");
-
-        // Test that even when there are no entries, we get a term for 0
-        assert_eq!(Ok(0), storage.term(0));
-
-        // Write some entries
-        let entries = populate_storage(&storage, (1..6).collect());
-
-        // Assert we get the right terms
-        for entry in entries {
-            assert_eq!(Ok(entry.term), storage.term(entry.index));
-        }
-
-        // Delete some entries
-        storage.compact(3).unwrap();
-
-        // Test that we can still get the term of the last compacted entry
-        assert_eq!(err_compacted(), storage.term(1));
-        assert_eq!(err_compacted(), storage.term(2));
-        assert_eq!(Ok(3), storage.term(3));
-        assert_eq!(Ok(4), storage.term(4));
+        tests::test_storage_term(storage);
     }
 
     #[test]
     fn test_first_and_last_index() {
         let (_tmp, storage) = create_temp_storage("test_first_and_last_index");
-
-        // Assert indexes when nothing available, weirdly, first_index() should return 1 in this
-        // case, otherwise a less-than-0 overflow occurs when Raft is initialized.
-        assert_eq!(Ok(1), storage.first_index());
-        assert_eq!(Ok(0), storage.last_index());
-
-        populate_storage(&storage, (1..6).collect());
-
-        assert_eq!(Ok(1), storage.first_index());
-        assert_eq!(Ok(5), storage.last_index());
-
-        storage.compact(3).unwrap();
-
-        assert_eq!(Ok(4), storage.first_index());
-        assert_eq!(Ok(5), storage.last_index());
+        tests::test_first_and_last_index(storage);
     }
 
-
-    // StorageExt trait tests
 
     #[test]
     fn test_storage_ext_compact() {
         let (_tmp, storage) = create_temp_storage("test_storage_ext_compact");
-
-        // Assert that compacting fails when there is nothing to compact
-        assert_eq!(err_compacted(), storage.compact(0));
-
-        let entries = populate_storage(&storage, (1..11).collect());
-
-        assert_eq!(err_compacted(), storage.compact(0));
-
-        assert_eq!(Ok(()), storage.compact(2));
-        assert_eq!(err_compacted(), storage.entries(1, 3, MAX));
-        assert_eq!(Ok(entries[2..9].to_vec()), storage.entries(3, 10, MAX));
-
-        assert_eq!(Ok(()), storage.compact(4));
-        assert_eq!(err_compacted(), storage.entries(2, 5, MAX));
-        assert_eq!(Ok(entries[4..9].to_vec()), storage.entries(5, 10, MAX));
+        tests::test_storage_ext_compact(storage);
     }
 
-    // Test that both implementations of StorageExt produce the same results
     #[test]
     fn test_parity() {
-        let (_tmp, fs_storage) = create_temp_storage("test_parity");
-
-        let mem_storage = MemStorage::new();
-
-        assert_eq!(mem_storage.term(0), fs_storage.term(0));
-        assert_eq!(mem_storage.term(1), fs_storage.term(1));
-        assert_eq!(mem_storage.term(2), fs_storage.term(2));
-        assert_eq!(mem_storage.last_index(), fs_storage.last_index());
-        assert_eq!(mem_storage.first_index(), fs_storage.first_index());
-
-        for i in 0..3 {
-            assert_eq!(mem_storage.entries(0, i, MAX), fs_storage.entries(0, i, MAX));
-        }
-
-        populate_storage(&mem_storage, (1..6).collect());
-        populate_storage(&fs_storage, (1..6).collect());
-
-        assert_eq!(mem_storage.first_index(), fs_storage.first_index());
-        assert_eq!(mem_storage.last_index(), fs_storage.last_index());
-
-        // NOTE: This starts at i=1 because I believe the implementation of MemStorage does the
-        // wrong thing for (0, 0)
-        for i in 1..6 {
-            for j in i..6 {
-                assert_eq!(mem_storage.entries(i, j, MAX), fs_storage.entries(i, j, MAX));
-            }
-            assert_eq!(mem_storage.term(i), fs_storage.term(i));
-        }
-
-        assert_eq!(mem_storage.snapshot(), fs_storage.snapshot());
-
-        let mem_snapshot = mem_storage.create_snapshot(3, None, "".into()).expect("MemStorage: Create snapshot failed");
-        let fs_snapshot = fs_storage.create_snapshot(3, None, "".into()).expect("FsStorage: Create snapshot failed");
-        assert_eq!(mem_snapshot, fs_snapshot);
-
-        assert_eq!(
-            mem_storage.apply_snapshot(&mem_snapshot),
-            fs_storage.apply_snapshot(&fs_snapshot),
-        );
-
-        for i in 2..5 {
-            assert_eq!(mem_storage.compact(i), fs_storage.compact(i));
-
-            assert_eq!(mem_storage.first_index(), fs_storage.first_index());
-            assert_eq!(mem_storage.last_index(), fs_storage.last_index());
-        }
-
-        assert_eq!(mem_storage.snapshot(), fs_storage.snapshot());
+        let (_tmp, storage) = create_temp_storage("test_parity");
+        tests::test_parity(storage);
     }
 }
