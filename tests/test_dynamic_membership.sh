@@ -34,8 +34,7 @@ INIT_APIS=($(docker exec $ADMIN bash -c 'cd /shared_data/rest_apis && ls -d *'))
 echo "Initial APIs:" ${INIT_APIS[*]}
 
 echo "Waiting until network has started"
-docker exec $ADMIN bash -c 'while true; do \
-  API=$(ls /shared_data/rest_apis | head -n 1); \
+docker exec -e API=${INIT_APIS[0]} $ADMIN bash -c 'while true; do \
   BLOCK_LIST=$(sawtooth block list --url "http://$API:8008" 2>&1); \
   if [[ $BLOCK_LIST == *"BLOCK_ID"* ]]; then \
     echo "Network ready" && break; \
@@ -56,8 +55,7 @@ docker exec $ADMIN bash -c 'while true; do \
   fi; done;'
 
 echo "Adding new node to Raft network"
-docker exec $ADMIN bash -c '\
-  API=$(ls /shared_data/rest_apis | head -n 1); \
+docker exec -e API=${INIT_APIS[0]} $ADMIN bash -c '\
   NEW_PEERS=$(cd /shared_data/validators && paste $(ls -1) -d , \
     | sed s/,/\\\",\\\"/g); \
   SETTING_PEERS=($(sawtooth settings list --url "http://$API:8008" \
