@@ -178,6 +178,44 @@ docker exec $ADMIN bash -c '\
   done;'
 echo "All nodes have reached block 20!"
 
+echo "Removing a node from the network"
+docker exec -e API=${INIT_APIS[0]} $ADMIN bash -c '\
+  NEW_PEERS=$(cd /shared_data/validators && paste $(ls -1 | head -4) -d , \
+    | sed s/,/\\\",\\\"/g); \
+  SETTING_PEERS=($(sawtooth settings list --url "http://$API:8008" \
+    --filter "sawtooth.consensus.raft.peers" --format csv | sed -n 2p | \
+    sed "s/\"\",\"\"/\ /g")); \
+  until [[ "${#SETTING_PEERS[@]}" -eq 4 ]]; do \
+    echo "Attempting to set sawtooth.consensus.raft.peers..."; \
+    # Try to update setting \
+    sawset proposal create -k /shared_data/keys/settings.priv \
+      --url "http://$API:8008" sawtooth.consensus.raft.peers=[\"$NEW_PEERS\"]; \
+    # Wait and see if setting has been updated \
+    sleep 5; \
+    SETTING_PEERS=($(sawtooth settings list --url "http://$API:8008" \
+      --filter "sawtooth.consensus.raft.peers" --format csv | sed -n 2p | \
+      sed "s/\"\",\"\"/\ /g")); \
+  done;'
+
+echo "Waiting for all remaining nodes to reach block 30"
+docker exec $ADMIN bash -c '\
+  APIS=$(cd /shared_data/rest_apis && ls -d *); \
+  NODES_ON_30=0; \
+  until [ "$NODES_ON_30" -eq 4 ]; do \
+    NODES_ON_30=0; \
+    sleep 5; \
+    for api in $APIS; do \
+      BLOCK_LIST=$(sawtooth block list --url "http://$api:8008" \
+        | cut -f 1 -d " "); \
+      if [[ $BLOCK_LIST == *"30"* ]]; then \
+        echo "API $api is on block 30" && ((NODES_ON_30++)); \
+      else \
+        echo "API $api is not yet on block 30"; \
+      fi; \
+    done; \
+  done;'
+echo "All nodes have reached block 30!"
+
 echo "Done testing; shutting down all containers"
 docker-compose -f ../adhoc/workload.yaml down && \
 docker-compose -p alpha -f ../adhoc/node.yaml down && \
