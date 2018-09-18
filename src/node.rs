@@ -163,8 +163,9 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
     pub fn on_peer_message(&mut self, message: PeerMessage) {
         let raft_message = try_into_raft_message(&message)
             .expect("Failed to interpret bytes as Raft message");
-        self.raw_node.step(raft_message)
-            .expect("Failed to handle Raft message");
+        self.raw_node.step(raft_message).unwrap_or_else(|err| {
+            warn!("Peer({:?}) encountered error when stepping: {:?}", self.peer_id, err);
+        });
     }
 
     pub fn tick(&mut self) {
