@@ -24,6 +24,7 @@ protobuf = "2"
 raft = "0.3.1"
 sawtooth_sdk = { git = "https://github.com/hyperledger/sawtooth-core.git" }
 serde_json = "1"
+uluru = "0.2"
 
 [patch.crates-io]
 log4rs = { git = "https://github.com/ltseeley/log4rs", branch = "config-loading" }

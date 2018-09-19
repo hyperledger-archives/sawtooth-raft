@@ -26,6 +26,7 @@ extern crate protobuf;
 extern crate raft;
 extern crate sawtooth_sdk;
 extern crate serde_json;
+extern crate uluru;
 
 #[cfg(test)]
 extern crate tempdir;
