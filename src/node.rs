@@ -127,15 +127,6 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             info!("Leader({:?}) proposed block {:?}", self.peer_id, block_id);
             self.raw_node.propose(vec![], block_id.clone().into()).expect("Failed to propose block to Raft");
             self.leader_state = Some(LeaderState::Proposing(block_id));
-        } else if match self.follower_state {
-            Some(FollowerState::Committing(ref expected)) => {
-                expected == &block_id
-            },
-            _ => false,
-        } {
-            debug!("Follower({:?}) committing saved block {:?}", self.peer_id, block_id);
-            self.service.commit_block(block_id.clone()).expect("Failed to commit block");
-            self.follower_state = Some(FollowerState::Idle);
         }
     }
 
@@ -146,6 +137,9 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             },
             _ => false,
         } {
+            let entry = self.block_queue.block_committed();
+            self.raw_node.raft.mut_store().set_applied(entry).expect("Failed to set last applied entry.");
+
             if let Some(change) = self.check_for_conf_change(block_id.clone()) {
                 debug!("Leader({:?}) transition to ChangingConfig", self.peer_id);
                 self.leader_state = Some(LeaderState::ChangingConfig);
@@ -155,8 +149,18 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
                 self.leader_state = Some(LeaderState::Building(Instant::now()));
                 self.service.initialize_block(None).expect("Failed to initialize block");
             }
-        } else {
+        }
+
+        if match self.follower_state {
+            Some(FollowerState::Committing(ref committing)) => {
+                committing == &block_id
+            },
+            _ => false,
+        } {
             info!("Peer({:?}) committed block {:?}", self.peer_id, block_id);
+            let entry = self.block_queue.block_committed();
+            self.raw_node.raft.mut_store().set_applied(entry).expect("Failed to set last applied entry.");
+            self.follower_state = Some(FollowerState::Idle);
         }
     }
 
@@ -267,7 +271,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
                     }
                     Some(LeaderState::Committing(ref block_id)) => {
                         self.follower_state = Some(FollowerState::Committing(block_id.clone()));
-                    }
+                    },
                     _ => (),
                 }
                 self.leader_state = None;
@@ -285,12 +289,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         }
 
         if let Some(committed_entries) = ready.committed_entries.take() {
-            let mut _last_apply_index = 0;
             for entry in committed_entries {
-                // Mostly, you need to save the last apply index to resume applying
-                // after restart. Here we just ignore this because we use a Memory storage.
-                _last_apply_index = entry.get_index();
-
                 if entry.get_data().is_empty() {
                     // When the peer becomes Leader it will send an empty entry.
                     continue;
@@ -298,7 +297,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
 
                 if entry.get_entry_type() == EntryType::EntryNormal {
                     let block_id: BlockId = BlockId::from(Vec::from(entry.get_data()));
-                    self.block_queue.add_block_commit(block_id);
+                    self.block_queue.add_block_commit(block_id, entry.get_index());
                 } else if entry.get_entry_type() == EntryType::EntryConfChange && entry.get_term() != 1 {
                     let change: ConfChange = protobuf::parse_from_bytes(entry.get_data())
                         .expect("Failed to parse ConfChange");
@@ -319,17 +318,17 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             .get_chain_head()
             .expect("Chain head should not be none");
         if let Some(block_id) = self.block_queue.get_next_committable(&chain_head) {
-            self.commit_block(block_id);
+            self.commit_block(&block_id);
         };
 
         // Advance the Raft
         self.raw_node.advance(ready);
     }
 
-    fn commit_block(&mut self, block_id: BlockId) {
+    fn commit_block(&mut self, block_id: &BlockId) {
         if match self.leader_state {
             Some(LeaderState::Proposing(ref proposed)) => {
-                &block_id == proposed
+                block_id == proposed
             },
             _ => false,
         } {
@@ -338,20 +337,10 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             self.service.commit_block(block_id.clone()).expect("Failed to commit block");
         }
 
-        if self.follower_state.is_some() {
+        if let Some(FollowerState::Idle) = self.follower_state {
             debug!("Peer({:?}) committing block {:?}", self.peer_id, block_id);
-            match self.service.commit_block(block_id.clone()) {
-                Err(Error::UnknownBlock(_)) => {
-                    debug!(
-                        "Follower({:?}) tried to commit block before available: {:?}",
-                        self.peer_id,
-                        block_id
-                    );
-                    self.follower_state = Some(FollowerState::Committing(block_id));
-                }
-                Err(err) => panic!("Failed to commit block {:?}", err),
-                _ => (),
-            }
+            self.follower_state = Some(FollowerState::Committing(block_id.clone()));
+            self.service.commit_block(block_id.clone()).expect("Failed to commit block");
         }
     }
 

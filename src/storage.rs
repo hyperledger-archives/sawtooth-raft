@@ -42,6 +42,12 @@ pub trait StorageExt: Storage {
     /// Append the new entries to storage
     fn append(&self, ents: &[Entry]) -> Result<(), Error>;
 
+    /// Get the index of the last raft entry that was committed
+    fn applied(&self) -> Result<u64, Error>;
+
+    /// Save the index of the last raft entry that was committed
+    fn set_applied(&self, applied: u64) -> Result<(), Error>;
+
     fn describe() -> String;
 }
 
@@ -70,6 +76,15 @@ impl StorageExt for MemStorage {
 
     fn append(&self, ents: &[Entry]) -> Result<(), Error> {
         self.wl().append(ents)
+    }
+
+    // Applied index is only useful when node restarts, but MemStorage does not persist
+    fn applied(&self) -> Result<u64, Error> {
+        Ok(0)
+    }
+
+    fn set_applied(&self, _applied: u64) -> Result<(), Error> {
+        Ok(())
     }
 
     fn describe() -> String {
@@ -218,6 +233,17 @@ pub (crate) mod tests {
             storage.entries(2, 5, MAX)
         );
         assert_eq!(Ok(entries[4..9].to_vec()), storage.entries(5, 10, MAX));
+    }
+
+    pub fn test_applied<S: StorageExt>(storage: S) {
+        // Applied is initially 0
+        assert_eq!(Ok(0), storage.applied());
+
+        // Applied gets set
+        storage.set_applied(1);
+        assert_eq!(Ok(1), storage.applied());
+        storage.set_applied(2);
+        assert_eq!(Ok(2), storage.applied());
     }
 
     // Test that both implementations of StorageExt produce the same results

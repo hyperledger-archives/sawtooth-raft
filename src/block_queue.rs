@@ -47,8 +47,9 @@ impl BlockStatus {
 pub struct BlockQueue {
     // Backlog of blocks that are being/have been processed by the validator
     validator_backlog: HashMap<BlockId, BlockStatus>,
-    // Queue of blocks that can be committed when they have been validated
-    commit_queue: VecDeque<BlockId>,
+    // Queue of blocks that can be committed when they have been validated, along with the index of
+    // the corresponding Raft entry
+    commit_queue: VecDeque<(BlockId, u64)>,
 }
 
 impl BlockQueue {
@@ -75,24 +76,31 @@ impl BlockQueue {
     }
 
     // Mark the block for commit; called when the engine wants to commit the block
-    pub fn add_block_commit(&mut self, block_id: BlockId) {
-        self.commit_queue.push_back(block_id);
+    pub fn add_block_commit(&mut self, block_id: BlockId, entry: u64) {
+        self.commit_queue.push_back((block_id, entry));
+    }
+
+    // Delete the current block (front of the queue) since it's been committed, and return its
+    // corresponding entry
+    pub fn block_committed(&mut self) -> u64 {
+        let (block_id, entry) = self.commit_queue.pop_front().expect("No blocks in queue.");
+        self.validator_backlog.remove(&block_id);
+        entry
     }
 
     // Returns the BlockId of the next block that can be committed (if there is one)
     pub fn get_next_committable(&mut self, chain_head: &Block) -> Option<BlockId> {
-        self.commit_queue.pop_front().filter(|block_id| {
-            if let Some(status) = self.validator_backlog.get(block_id) {
+        if let Some(&(ref block_id, _)) = self.commit_queue.front() {
+            if let Some(status) = self.validator_backlog.get(&block_id) {
                 if let Some(block) = status.block.clone() {
                     if status.block_valid && block.previous_id == chain_head.block_id {
                         // Block is ready
-                        return true;
+                        return Some(block_id.clone());
                     }
                 }
             }
-            // Block is not ready, put it back
-            self.commit_queue.push_front(block_id.clone());
-            false
-        })
+        }
+        // No block or next block not ready
+        None
     }
 }

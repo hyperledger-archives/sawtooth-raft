@@ -251,6 +251,15 @@ impl<S: StorageExt> StorageExt for CachedStorage<S> {
         self.storage.append(entries)
     }
 
+    // This is only read once (on startup), so it does not need to be cached
+    fn applied(&self) -> Result<u64, raft::Error> {
+        self.storage.applied()
+    }
+
+    fn set_applied(&self, applied: u64) -> Result<(), raft::Error> {
+        self.storage.set_applied(applied)
+    }
+
     fn describe() -> String {
         format!("cached storage: {}", S::describe())
     }
@@ -303,6 +312,12 @@ mod tests {
     fn test_storage_ext_compact() {
         let (_tmp, storage) = create_temp_storage("test_storage_ext_compact");
         tests::test_storage_ext_compact(storage);
+    }
+
+    #[test]
+    fn test_applied() {
+        let (_tmp, storage) = create_temp_storage("test_applied");
+        tests::test_applied(storage);
     }
 
     #[test]
