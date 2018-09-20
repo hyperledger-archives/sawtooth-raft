@@ -40,6 +40,7 @@ impl<S: StorageExt> RaftEngineConfig<S> {
     fn new(storage: S) -> Self {
         let mut raft = RaftConfig::default();
         raft.max_size_per_msg = 1024 * 1024 * 1024;
+        raft.applied = storage.applied().expect("Applied should have a value");
 
         RaftEngineConfig {
             peers: Vec::new(),
@@ -60,11 +61,12 @@ impl<S: StorageExt> fmt::Debug for RaftEngineConfig<S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "RaftEngineConfig {{ peers: {:?}, period: {:?}, raft: {{ election_tick: {}, heartbeat_tick: {} }}, storage: {} }}",
+            "RaftEngineConfig {{ peers: {:?}, period: {:?}, raft: {{ election_tick: {}, heartbeat_tick: {}, applied: {} }}, storage: {} }}",
             self.peers,
             self.period,
             self.raft.election_tick,
             self.raft.heartbeat_tick,
+            self.raft.applied,
             S::describe(),
         )
     }
