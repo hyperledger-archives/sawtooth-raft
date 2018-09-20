@@ -215,6 +215,15 @@ impl StorageExt for FsStorage {
         Ok(())
     }
 
+    fn applied(&self) -> Result<u64, raft::Error> {
+        Ok(read_applied(&self.data_dir)?)
+    }
+
+    fn set_applied(&self, applied: u64) -> Result<(), raft::Error> {
+        write_applied(&self.data_dir, applied)?;
+        Ok(())
+    }
+
     fn describe() -> String {
         "file-system backed persistent storage".into()
     }
@@ -287,6 +296,10 @@ fn read_last_index<P: AsRef<Path>>(data_dir: P) -> io::Result<u64> {
     read_u64_from_file(data_dir.as_ref().join("last"))
 }
 
+fn read_applied<P: AsRef<Path>>(data_dir: P) -> io::Result<u64> {
+    read_u64_from_file(data_dir.as_ref().join("applied"))
+}
+
 fn read_entry<P: AsRef<Path>>(entries_dir: P, index: u64) -> io::Result<Entry> {
     read_pb_from_file(entries_dir.as_ref().join(format!("{}", index)))
 }
@@ -318,6 +331,7 @@ fn init_raft_state<P: AsRef<Path>>(data_dir: P) -> io::Result<()> {
     write_compacted_term(&data_dir, 0)?;
     write_first_index(&data_dir, 1)?;
     write_last_index(&data_dir, 0)?;
+    write_applied(&data_dir, 0)?;
     write_hard_state(&data_dir, &HardState::new())?;
     write_snapshot(&data_dir, &Snapshot::new())
 }
@@ -340,6 +354,10 @@ fn write_first_index<P: AsRef<Path>>(data_dir: P, first: u64) -> io::Result<()> 
 
 fn write_last_index<P: AsRef<Path>>(data_dir: P, last: u64) -> io::Result<()> {
     write_u64_to_file(data_dir.as_ref().join("last"), last)
+}
+
+fn write_applied<P: AsRef<Path>>(data_dir: P, applied: u64) -> io::Result<()> {
+    write_u64_to_file(data_dir.as_ref().join("applied"), applied)
 }
 
 fn write_entry<P: AsRef<Path>>(entries_dir: P, entry: &Entry) -> io::Result<()> {
@@ -476,6 +494,12 @@ mod tests {
     fn test_storage_ext_compact() {
         let (_tmp, storage) = create_temp_storage("test_storage_ext_compact");
         tests::test_storage_ext_compact(storage);
+    }
+
+    #[test]
+    fn test_applied() {
+        let (_tmp, storage) = create_temp_storage("test_applied");
+        tests::test_applied(storage);
     }
 
     #[test]
