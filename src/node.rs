@@ -127,15 +127,6 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             info!("Leader({:?}) proposed block {:?}", self.peer_id, block_id);
             self.raw_node.propose(vec![], block_id.clone().into()).expect("Failed to propose block to Raft");
             self.leader_state = Some(LeaderState::Proposing(block_id));
-        } else if match self.follower_state {
-            Some(FollowerState::Committing(ref expected)) => {
-                expected == &block_id
-            },
-            _ => false,
-        } {
-            debug!("Follower({:?}) committing saved block {:?}", self.peer_id, block_id);
-            self.service.commit_block(block_id.clone()).expect("Failed to commit block");
-            self.follower_state = Some(FollowerState::Idle);
         }
     }
 
@@ -260,15 +251,9 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             // We just stepped down as leader
             if self.leader_state.is_some() {
                 // If we were building a block, cancel it
-                match self.leader_state {
-                    Some(LeaderState::Building(_)) => {
-                        debug!("Leader({:?}) stepped down, cancelling block", self.peer_id);
-                        self.service.cancel_block().expect("Failed to cancel block");
-                    }
-                    Some(LeaderState::Committing(ref block_id)) => {
-                        self.follower_state = Some(FollowerState::Committing(block_id.clone()));
-                    }
-                    _ => (),
+                if let Some(LeaderState::Building(_)) = self.leader_state {
+                    debug!("Leader({:?}) stepped down, cancelling block", self.peer_id);
+                    self.service.cancel_block().expect("Failed to cancel block");
                 }
                 self.leader_state = None;
                 if self.follower_state.is_none() {
@@ -340,18 +325,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
 
         if self.follower_state.is_some() {
             debug!("Peer({:?}) committing block {:?}", self.peer_id, block_id);
-            match self.service.commit_block(block_id.clone()) {
-                Err(Error::UnknownBlock(_)) => {
-                    debug!(
-                        "Follower({:?}) tried to commit block before available: {:?}",
-                        self.peer_id,
-                        block_id
-                    );
-                    self.follower_state = Some(FollowerState::Committing(block_id));
-                }
-                Err(err) => panic!("Failed to commit block {:?}", err),
-                _ => (),
-            }
+            self.service.commit_block(block_id.clone()).expect("Failed to commit block");
         }
     }
 
