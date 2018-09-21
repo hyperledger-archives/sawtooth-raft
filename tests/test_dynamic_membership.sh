@@ -34,8 +34,7 @@ INIT_APIS=($(docker exec $ADMIN bash -c 'cd /shared_data/rest_apis && ls -d *'))
 echo "Initial APIs:" ${INIT_APIS[*]}
 
 echo "Waiting until network has started"
-docker exec $ADMIN bash -c 'while true; do \
-  API=$(ls /shared_data/rest_apis | head -n 1); \
+docker exec -e API=${INIT_APIS[0]} $ADMIN bash -c 'while true; do \
   BLOCK_LIST=$(sawtooth block list --url "http://$API:8008" 2>&1); \
   if [[ $BLOCK_LIST == *"BLOCK_ID"* ]]; then \
     echo "Network ready" && break; \
@@ -56,8 +55,7 @@ docker exec $ADMIN bash -c 'while true; do \
   fi; done;'
 
 echo "Adding new node to Raft network"
-docker exec $ADMIN bash -c '\
-  API=$(ls /shared_data/rest_apis | head -n 1); \
+docker exec -e API=${INIT_APIS[0]} $ADMIN bash -c '\
   NEW_PEERS=$(cd /shared_data/validators && paste $(ls -1) -d , \
     | sed s/,/\\\",\\\"/g); \
   SETTING_PEERS=($(sawtooth settings list --url "http://$API:8008" \
@@ -99,24 +97,124 @@ docker exec -e API=$NEW_API $ADMIN bash -c 'while true; do \
 echo "Starting workload"
 RATE=5 docker-compose -f ../adhoc/workload.yaml up -d
 
-echo "Waiting for all nodes to reach block 5"
+echo "Waiting for all nodes to reach block 10"
 docker exec $ADMIN bash -c '\
   APIS=$(cd /shared_data/rest_apis && ls -d *); \
-  NODES_ON_5=0; \
-  until [ "$NODES_ON_5" -eq 4 ]; do \
-    NODES_ON_5=0; \
+  NODES_ON_10=0; \
+  until [ "$NODES_ON_10" -eq 4 ]; do \
+    NODES_ON_10=0; \
     sleep 5; \
     for api in $APIS; do \
       BLOCK_LIST=$(sawtooth block list --url "http://$api:8008" \
         | cut -f 1 -d " "); \
-      if [[ $BLOCK_LIST == *"5"* ]]; then \
-        echo "API $api is on block 5" && ((NODES_ON_5++)); \
+      if [[ $BLOCK_LIST == *"10"* ]]; then \
+        echo "API $api is on block 10" && ((NODES_ON_10++)); \
       else \
-        echo "API $api is not yet on block 5"; \
+        echo "API $api is not yet on block 10"; \
       fi; \
     done; \
   done;'
-echo "All nodes have reached block 5!"
+echo "All nodes have reached block 10!"
+
+echo "Starting 5th node"
+docker-compose -p epsilon -f ../adhoc/node.yaml up -d
+
+echo "Waiting until 5th node is ready"
+docker exec $ADMIN bash -c 'while true; do \
+  KEYS=($(cd /shared_data/validators && paste $(ls -1) -d \ )); \
+  if [[ "${#KEYS[@]}" -eq 5 ]]; then \
+    echo "New node ready" && break; \
+  else \
+    echo "Still waiting..." && sleep 0.5; \
+  fi; done;'
+
+echo "Adding 5th node to Raft network"
+docker exec -e API=${INIT_APIS[0]} $ADMIN bash -c '\
+  NEW_PEERS=$(cd /shared_data/validators && paste $(ls -1) -d , \
+    | sed s/,/\\\",\\\"/g); \
+  SETTING_PEERS=($(sawtooth settings list --url "http://$API:8008" \
+    --filter "sawtooth.consensus.raft.peers" --format csv | sed -n 2p | \
+    sed "s/\"\",\"\"/\ /g")); \
+  until [[ "${#SETTING_PEERS[@]}" -eq 5 ]]; do \
+    echo "Attempting to set sawtooth.consensus.raft.peers..."; \
+    # Try to update setting \
+    sawset proposal create -k /shared_data/keys/settings.priv \
+      --url "http://$API:8008" sawtooth.consensus.raft.peers=[\"$NEW_PEERS\"]; \
+    # Wait and see if setting has been updated \
+    sleep 5; \
+    SETTING_PEERS=($(sawtooth settings list --url "http://$API:8008" \
+      --filter "sawtooth.consensus.raft.peers" --format csv | sed -n 2p | \
+      sed "s/\"\",\"\"/\ /g")); \
+  done;'
+
+NEWER_KEYS=($(docker exec $ADMIN bash -c '\
+  cd /shared_data/validators && paste $(ls -1) -d , | sed s/,/\ /g'))
+NEWER_APIS=($(docker exec $ADMIN bash -c 'cd /shared_data/rest_apis && ls -d *'))
+NEWER_KEY=($(comm -3 <(printf '%s\n' "${NEW_KEYS[@]}" | LC_ALL=C sort) \
+  <(printf '%s\n' "${NEWER_KEYS[@]}" | LC_ALL=C sort)))
+NEWER_API=($(comm -3 <(printf '%s\n' "${NEW_APIS[@]}" | LC_ALL=C sort) \
+  <(printf '%s\n' "${NEWER_APIS[@]}" | LC_ALL=C sort)))
+echo "New keys:" ${NEWER_KEYS[*]}
+echo "New APIs:" ${NEWER_APIS[*]}
+echo "New node key:" $NEWER_KEY
+echo "New node API:" $NEWER_API
+
+echo "Waiting for all nodes to reach block 20"
+docker exec $ADMIN bash -c '\
+  APIS=$(cd /shared_data/rest_apis && ls -d *); \
+  NODES_ON_20=0; \
+  until [ "$NODES_ON_20" -eq 5 ]; do \
+    NODES_ON_20=0; \
+    sleep 5; \
+    for api in $APIS; do \
+      BLOCK_LIST=$(sawtooth block list --url "http://$api:8008" \
+        | cut -f 1 -d " "); \
+      if [[ $BLOCK_LIST == *"20"* ]]; then \
+        echo "API $api is on block 20" && ((NODES_ON_20++)); \
+      else \
+        echo "API $api is not yet on block 20"; \
+      fi; \
+    done; \
+  done;'
+echo "All nodes have reached block 20!"
+
+echo "Removing a node from the network"
+docker exec -e API=${INIT_APIS[0]} $ADMIN bash -c '\
+  NEW_PEERS=$(cd /shared_data/validators && paste $(ls -1 | head -4) -d , \
+    | sed s/,/\\\",\\\"/g); \
+  SETTING_PEERS=($(sawtooth settings list --url "http://$API:8008" \
+    --filter "sawtooth.consensus.raft.peers" --format csv | sed -n 2p | \
+    sed "s/\"\",\"\"/\ /g")); \
+  until [[ "${#SETTING_PEERS[@]}" -eq 4 ]]; do \
+    echo "Attempting to set sawtooth.consensus.raft.peers..."; \
+    # Try to update setting \
+    sawset proposal create -k /shared_data/keys/settings.priv \
+      --url "http://$API:8008" sawtooth.consensus.raft.peers=[\"$NEW_PEERS\"]; \
+    # Wait and see if setting has been updated \
+    sleep 5; \
+    SETTING_PEERS=($(sawtooth settings list --url "http://$API:8008" \
+      --filter "sawtooth.consensus.raft.peers" --format csv | sed -n 2p | \
+      sed "s/\"\",\"\"/\ /g")); \
+  done;'
+
+echo "Waiting for all remaining nodes to reach block 30"
+docker exec $ADMIN bash -c '\
+  APIS=$(cd /shared_data/rest_apis && ls -d *); \
+  NODES_ON_30=0; \
+  until [ "$NODES_ON_30" -eq 4 ]; do \
+    NODES_ON_30=0; \
+    sleep 5; \
+    for api in $APIS; do \
+      BLOCK_LIST=$(sawtooth block list --url "http://$api:8008" \
+        | cut -f 1 -d " "); \
+      if [[ $BLOCK_LIST == *"30"* ]]; then \
+        echo "API $api is on block 30" && ((NODES_ON_30++)); \
+      else \
+        echo "API $api is not yet on block 30"; \
+      fi; \
+    done; \
+  done;'
+echo "All nodes have reached block 30!"
 
 echo "Done testing; shutting down all containers"
 docker-compose -f ../adhoc/workload.yaml down && \
@@ -124,4 +222,5 @@ docker-compose -p alpha -f ../adhoc/node.yaml down && \
 docker-compose -p beta -f ../adhoc/node.yaml down && \
 docker-compose -p gamma -f ../adhoc/node.yaml down && \
 docker-compose -p delta -f ../adhoc/node.yaml down && \
+docker-compose -p epsilon -f ../adhoc/node.yaml down && \
 docker-compose -f ../adhoc/admin.yaml down
