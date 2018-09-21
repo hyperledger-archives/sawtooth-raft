@@ -5,6 +5,7 @@ Table of Contents
 .. toctree::
 
    introduction.rst
+   configuring_deploying.rst
    community.rst
 
 .. Licensed under Creative Commons Attribution 4.0 International License

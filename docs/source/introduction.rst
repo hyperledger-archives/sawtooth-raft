@@ -10,6 +10,33 @@ TiKV, `raft-rs`_.
 .. _Raft: http://raft.github.io/
 .. _raft-rs: https://github.com/pingcap/raft-rs
 
+Sawtooth Raft differs from the PoET SGX and devmode consensus engines in a few
+major ways:
+
+* **Raft is a leader-based consensus algorithm** - The Raft algorithm defines
+  an election process whereby a leader is established and recognized by all
+  followers. This means that only one node—the leader—publishes blocks, which
+  are then validated and agreed on by the other nodes in the network—the
+  followers.
+* **Raft is non-forking** - No forks arise on a Raft network because only one
+  node can publish blocks. This means that no fork resolution needs to be done,
+  which reduces the overhead associated with block management and lends itself
+  to increased performance.
+* **Raft membership is fixed** - Raft requires that a majority of nodes agree on
+  all progress that is made. To ensure safety by preventing invalid node
+  configurations, Sawtooth Raft does not support open membership. The population
+  of nodes is fixed unless changed by an administrator.
+* **Raft networks should be small** - Raft requires exchanging messages between
+  all nodes to reach consensus for each block, and the leader must wait for a
+  majority of nodes to agree on a new entry before it can be committed. The
+  number of messages that need to be exchanged increases exponentially with the
+  size of the network, which make large networks impractical.
+* **Raft is not Byzantine fault tolerant** - The Raft algorithm was designed to
+  be crash fault tolerant—it can continue to make progress as long as a majority
+  of its nodes are available. However, Raft only guarantees safety and
+  availability under non-Byzantine conditions, which makes it ill-suited for
+  networks that require Byzantine fault tolerance.
+
 The Sawtooth Raft consensus engine may be right for you if your Sawtooth
 deployment will:
 
