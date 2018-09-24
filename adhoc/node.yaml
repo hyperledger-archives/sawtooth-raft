@@ -100,7 +100,7 @@ services:
       context: .
       dockerfile: ../Dockerfile
     volumes:
-      - ..:/project/sawtooth-raft
+      - ${SAWOOTH_RAFT:-..}:/project/sawtooth-raft
     working_dir: /project/sawtooth-raft/
     command: ./target/debug/sawtooth-raft --connect tcp://validator:5050 -v
 
