@@ -81,9 +81,9 @@ node ('master') {
             }
 
             stage("Archive Build Artifacts") {
-                sh 'docker-compose -f copy-debs.yaml up'
-                sh 'docker-compose -f copy-debs.yaml down'
-                archiveArtifacts artifacts: 'sawtooth-raft*amd64.deb, docs/build/html/**, docs/build/latex/*.pdf'
+                sh 'docker-compose -f ci/copy-debs.yaml up'
+                sh 'docker-compose -f ci/copy-debs.yaml down'
+                archiveArtifacts artifacts: 'ci/sawtooth-raft*amd64.deb, docs/build/html/**, docs/build/latex/*.pdf'
             }
         }
     }
