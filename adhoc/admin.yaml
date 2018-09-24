@@ -27,6 +27,8 @@ networks:
 
 services:
   admin:
+    labels:
+      - "com.sawtooth.isolation_id=${ISOLATION_ID:-}"
     build:
       context: .
       dockerfile: admin.Dockerfile

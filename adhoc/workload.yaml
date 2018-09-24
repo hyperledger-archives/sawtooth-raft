@@ -30,6 +30,8 @@ services:
 
   workload:
     image: sawtooth-intkey-workload
+    labels:
+      - "com.sawtooth.isolation_id=${ISOLATION_ID:-}"
     command: "bash -c \"\
       export TARGETS=$$(\
         for target in $$(ls /shared_data/rest_apis -1); do \
