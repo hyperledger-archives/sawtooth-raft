@@ -73,6 +73,14 @@ node ('master') {
             stage("Run Tests") {
                 sh './bin/run_docker_test tests/test_unit.yaml'
                 sh './bin/run_docker_test tests/test_liveness.yaml'
+                sh './bin/run_docker_test tests/test_dynamic_membership.yaml'
+                sh './bin/run_docker_test tests/test_crash_fault_tolerance.yaml'
+                // Clean up any residual containers that may not have been removed
+                sh '''
+                  docker rm -f \
+                    $(docker ps -f "label=com.sawtooth.isolation_id=${ISOLATION_ID}" \
+                    | awk {\'if(NR>1)print $1\'}) &> /dev/null
+                '''
             }
 
             stage("Build Docs") {
