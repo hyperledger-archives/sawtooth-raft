@@ -30,7 +30,7 @@ use sawtooth_sdk::consensus::{
 
 use config::{self, RaftEngineConfig};
 use ticker;
-use node::SawtoothRaftNode;
+use node::{ReadyStatus, SawtoothRaftNode};
 use storage::StorageExt;
 
 
@@ -110,7 +110,9 @@ impl Engine for RaftEngine {
                 node.tick();
             });
 
-            node.process_ready();
+            if let ReadyStatus::Shutdown = node.process_ready() {
+                break;
+            }
         }
     }
 

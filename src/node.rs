@@ -62,6 +62,11 @@ enum FollowerState {
     Committing(BlockId),
 }
 
+pub enum ReadyStatus {
+    Continue,
+    Shutdown,
+}
+
 pub struct SawtoothRaftNode<S: StorageExt> {
     peer_id: PeerId,
     raw_node: RawNode<S>,
@@ -220,9 +225,9 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         }
     }
 
-    pub fn process_ready(&mut self) {
+    pub fn process_ready(&mut self) -> ReadyStatus {
         if !self.raw_node.has_ready() {
-            return
+            return ReadyStatus::Continue;
         }
 
         // The Raft is ready, we can do something now.
@@ -303,7 +308,9 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
                     let change: ConfChange = protobuf::parse_from_bytes(entry.get_data())
                         .expect("Failed to parse ConfChange");
 
-                    self.apply_conf_change(&change);
+                    if let ReadyStatus::Shutdown = self.apply_conf_change(&change) {
+                        return ReadyStatus::Shutdown;
+                    }
 
                     if let Some(LeaderState::ChangingConfig) = self.leader_state {
                         debug!("Leader({:?}) transition to Building block", self.peer_id);
@@ -324,6 +331,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
 
         // Advance the Raft
         self.raw_node.advance(ready);
+        ReadyStatus::Continue
     }
 
     fn commit_block(&mut self, block_id: &BlockId) {
@@ -385,13 +393,18 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         None
     }
 
-    fn apply_conf_change(&mut self, change: &ConfChange) {
+    fn apply_conf_change(&mut self, change: &ConfChange) -> ReadyStatus {
         info!("Configuration change received: {:?}", change);
         let raft_id = change.get_node_id();
 
         // Update raft_id_to_peer_id according to change
         match change.get_change_type() {
             ConfChangeType::RemoveNode => {
+                // If this is our own ID, we're being removed from the network and should shutdown
+                if raft_id == peer_id_to_raft_id(&self.peer_id) {
+                    return ReadyStatus::Shutdown;
+                }
+
                 self.raft_id_to_peer_id.remove(&raft_id).unwrap();
             },
             ConfChangeType::AddNode => {
@@ -404,6 +417,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         }
 
         self.raw_node.apply_conf_change(&change);
+        ReadyStatus::Continue
     }
 }
 
