@@ -16,6 +16,8 @@ if you are not familiar with Raft, please see the `Raft`_ webpage.
 .. _Raft: https://raft.github.io/
 
 
+.. _validator-peering-requirements-label:
+
 Validator Peering Requirements
 ==============================
 

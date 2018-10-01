@@ -6,6 +6,7 @@ Table of Contents
 
    introduction.rst
    configuring_deploying.rst
+   troubleshooting.rst
    community.rst
 
 .. Licensed under Creative Commons Attribution 4.0 International License
