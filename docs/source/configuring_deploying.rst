@@ -157,10 +157,61 @@ consensus port ``5050``, then the Raft engine should be started with ``--connect
 tcp://127.0.0.1:5050``. If this option is not specified, Sawtooth Raft will
 attempt to connect with the default validator address: ``tcp://localhost:5050``.
 
-Once the validator and the Raft engine have been started, you can check that the
-engine has connected to the validator and registered itself by looking in the
-validator logs for the message ``Consensus engine registered: sawtooth-raft
-X.Y.Z``.
+
+Verifying Raft Is running
+-------------------------
+
+This section assumes that Raft is being run with logging level ``INFO``.
+
+When the Sawtooth Raft process starts initially, you will see a message that
+indicates the version of the Raft engine and the validator endpoint that it is
+attempting to connect to:
+
+.. code-block:: console
+
+  INFO  | sawtooth_raft:84     | Sawtooth Raft Engine (X.Y.Z)
+  INFO  | sawtooth_raft:90     | Raft Node connecting to 'tcp://validator:5050'
+
+This indicates that the Raft process has started; however, it does not indicate
+that the Raft engine itself is running. The Raft engine waits until the genesis
+block has been received and committed by the validator before running. Once the
+genesis block has been committed, you will see a message in the validator's logs
+indicating that the Raft engine has been registered:
+
+.. code-block:: console
+
+  Consensus engine registered: sawtooth-raft X.Y.Z
+
+If you do not see the message above in the validator logs, make sure that the
+Raft engine is properly connecting to the validator (see `Connecting to the
+Validator`_) and that the validator has committed the genesis block with the
+required Raft settings (see `Creating the Genesis Block`_ in the Sawtooth Core
+documentation).
+
+.. _Creating the Genesis Block: https://sawtooth.hyperledger.org/docs/core/nightly/master/sysadmin_guide/creating_genesis_block.html
+
+Once the consensus engine is running and connected to the validator, you will
+see a message in the Raft log that displays the configuration values that are
+being used by the Raft engine, similar to this one:
+
+.. code-block:: console
+
+  INFO  | sawtooth_raft::engin | Raft Engine Config Loaded: RaftEngineConfig { peers: [026c49c05b153ca92e2fae01fea85663ae397eb435cc7744907edfe839e84fb288], period: 3s, raft: { election_tick: 20, heartbeat_tick: 2, applied: 0 }, storage: cached storage: file-system backed persistent storage }
+
+You should also see a group of messages that indicate if the node has been
+elected leader, similar to this:
+
+.. code-block:: console
+
+  INFO  | raft::raft:833       | [15456778813275318575] became follower at term 0
+  INFO  | raft::raft:433       | [15456778813275318575] newRaft [peers: [15456778813275318575], term: 0, commit: 0, applied: 0, last_index: 0, last_term: 0]
+  INFO  | raft::raft:833       | [15456778813275318575] became follower at term 1
+  INFO  | raft::raft:1120      | [15456778813275318575] is starting a new election at term 1
+  INFO  | raft::raft:848       | [15456778813275318575] became candidate at term 2
+  INFO  | raft::raft:950       | [15456778813275318575] received MsgRequestVoteResponse from 15456778813275318575 at term 2
+  INFO  | raft::raft:891       | [15456778813275318575] became leader at term 2
+
+At this point, the Raft engine is running and ready to handle blocks.
 
 
 Starting a Multi-Node Raft Network
@@ -250,6 +301,43 @@ stop`` with the appropriate ``-p`` flag.
 
 After you have stopped a node, you can use ``docker-compose start`` with the
 appropriate ``-p`` flag to restart the stopped node.
+
+
+Verifying the Network Is Ready
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When the network is setup correctly, Raft will elect a node as leader. If all
+nodes are peered properly, you should also see a group of messages in the logs
+of each Raft engine that indicate if the node has been elected leader or if it
+has voted for another node as leader. On a leader node, the logs will look
+similar to this:
+
+.. code-block:: console
+
+  INFO  | raft::raft:833       | [12797589408118497989] became follower at term 0
+  INFO  | raft::raft:433       | [12797589408118497989] newRaft [peers: [9142281103993713288, 12797589408118497989], term: 0, commit: 0, applied: 0, last_index: 0, last_term: 0]
+  INFO  | raft::raft:833       | [12797589408118497989] became follower at term 1
+  INFO  | raft::raft:1120      | [12797589408118497989] is starting a new election at term 1
+  INFO  | raft::raft:848       | [12797589408118497989] became candidate at term 2
+  INFO  | raft::raft:950       | [12797589408118497989] received MsgRequestVoteResponse from 12797589408118497989 at term 2
+  INFO  | raft::raft:927       | [12797589408118497989] [logterm: 1, index: 2] sent MsgRequestVote request to 9142281103993713288 at term 2
+  INFO  | raft::raft:950       | [12797589408118497989] received MsgRequestVoteResponse from 9142281103993713288 at term 2
+  INFO  | raft::raft:1648      | [12797589408118497989] [quorum:2] has received 2 MsgRequestVoteResponse votes and 0 vote rejections
+  INFO  | raft::raft:891       | [12797589408118497989] became leader at term 2
+
+On a node that becomes a follower and votes for another node, the logs will look
+like this:
+
+.. code-block:: console
+
+  INFO  | raft::raft:833       | [9142281103993713288] became follower at term 0
+  INFO  | raft::raft:433       | [9142281103993713288] newRaft [peers: [9142281103993713288, 12797589408118497989], term: 0, commit: 0, applied: 0, last_index: 0, last_term: 0]
+  INFO  | raft::raft:833       | [9142281103993713288] became follower at term 1
+  INFO  | raft::raft:1014      | [9142281103993713288] [term: 1] received a MsgRequestVote message with higher term from 12797589408118497989 [term: 2]
+  INFO  | raft::raft:833       | [9142281103993713288] became follower at term 2
+  INFO  | raft::raft:1181      | [9142281103993713288] [logterm: 1, index: 2, vote: 0] cast MsgRequestVote for 12797589408118497989 [logterm: 1, index: 2] at term 2
+
+This indicates that a leader has been elected and that the network is ready.
 
 
 Applying Workload On a Network
