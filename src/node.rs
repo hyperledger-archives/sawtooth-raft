@@ -135,10 +135,10 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         }
     }
 
-    pub fn on_block_commit(&mut self, block_id: BlockId) {
+    pub fn on_block_commit(&mut self, block_id: &BlockId) {
         if match self.leader_state {
             Some(LeaderState::Committing(ref committing)) => {
-                committing == &block_id
+                committing == block_id
             },
             _ => false,
         } {
@@ -158,7 +158,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
 
         if match self.follower_state {
             Some(FollowerState::Committing(ref committing)) => {
-                committing == &block_id
+                committing == block_id
             },
             _ => false,
         } {
@@ -169,7 +169,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         }
     }
 
-    pub fn on_peer_message(&mut self, message: PeerMessage) {
+    pub fn on_peer_message(&mut self, message: &PeerMessage) {
         let raft_message = try_into_raft_message(&message)
             .expect("Failed to interpret bytes as Raft message");
         self.raw_node.step(raft_message).unwrap_or_else(|err| {

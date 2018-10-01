@@ -176,7 +176,9 @@ impl StorageExt for FsStorage {
         let compact_index = snapshot.get_metadata().get_index();
         self.compact(compact_index)?;
 
-        Ok(write_snapshot(&self.data_dir, &snapshot)?)
+        write_snapshot(&self.data_dir, &snapshot)?;
+
+        Ok(())
     }
 
     fn compact(&self, compact_index: u64) -> Result<(), raft::Error> {
@@ -196,10 +198,12 @@ impl StorageExt for FsStorage {
             write_first_index(&self.data_dir, last.get_index() + 1)?;
         }
 
-        Ok(delete
+        delete
             .into_iter()
             .map(|entry| remove_entry(&self.entries_dir, entry.index))
-            .collect::<Result<(), io::Error>>()?)
+            .collect::<Result<(), io::Error>>()?;
+
+        Ok(())
     }
 
     fn append(&self, entries: &[Entry]) -> Result<(), raft::Error> {
@@ -320,6 +324,7 @@ fn read_entries<P: AsRef<Path>>(entries_dir: P, range: Option<Range<u64>>) -> io
 
 // DirEntry mappers
 
+#[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
 fn dir_entry_to_raft_entry(dir_entry: fs::DirEntry) -> io::Result<Entry> {
     read_pb_from_file(dir_entry.path())
 }
@@ -392,12 +397,12 @@ fn read_and_map_dir<T, P: AsRef<Path>>(path: P, f: fn(fs::DirEntry) -> io::Resul
 
 fn read_u64_from_file<P: AsRef<Path>>(path: P) -> io::Result<u64> {
     const SIZE: usize = mem::size_of::<u64>();
-    let mut payload = fs::read(path)?;
+    let payload = fs::read(path)?;
     if payload.len() != SIZE {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "File does not contain u64"))
     }
     let mut buf: [u8; SIZE] = [0; SIZE];
-    (&mut buf[..]).copy_from_slice(&mut payload);
+    (&mut buf[..]).copy_from_slice(&payload);
     Ok(u64_from_bytes(buf))
 }
 

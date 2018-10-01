@@ -72,6 +72,7 @@ impl<S: StorageExt> fmt::Debug for RaftEngineConfig<S> {
     }
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(borrowed_box))]
 pub fn load_raft_config(
     peer_id: &PeerId,
     block_id: BlockId,
