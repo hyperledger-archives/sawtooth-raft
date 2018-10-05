@@ -270,13 +270,14 @@ impl<S: StorageExt> StorageExt for CachedStorage<S> {
 mod tests {
     use super::*;
 
-    use tempdir::TempDir;
+    use tempfile::TempDir;
+    use tempfile::Builder;
 
     use fs_storage::FsStorage;
     use storage::tests;
 
     fn create_temp_storage(name: &str) -> (TempDir, CachedStorage<FsStorage>) {
-        let tmp = TempDir::new(name).unwrap();
+        let tmp = Builder::new().prefix(name).tempdir().unwrap();
         let storage = CachedStorage::new(
             FsStorage::with_data_dir(tmp.path().into()).expect("Failed to create FsStorage")
         );

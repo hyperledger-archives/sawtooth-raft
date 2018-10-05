@@ -11,7 +11,7 @@ These components are released under separate copyright notices and license terms
 => libc for Rust
 => log for Rust
 => pingcap raft-rs
-=> rust-lang tempdir
+=> rust-lang tempfile
 => rust hex
 => log4rs
 
