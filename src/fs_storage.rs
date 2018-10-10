@@ -428,12 +428,13 @@ fn u64_from_bytes(bytes: [u8; mem::size_of::<u64>()]) -> u64 {
 mod tests {
     use super::*;
 
-    use tempdir::TempDir;
+    use tempfile::TempDir;
+    use tempfile::Builder;
 
     use storage::tests;
 
     fn create_temp_storage(name: &str) -> (TempDir, FsStorage) {
-        let tmp = TempDir::new(name).unwrap();
+        let tmp = Builder::new().prefix(name).tempdir().unwrap();
         let storage = FsStorage::with_data_dir(tmp.path().into()).unwrap();
         (tmp, storage)
     }
@@ -441,7 +442,7 @@ mod tests {
     // Test that read and write functions work
     #[test]
     fn test_rw() {
-        let tmp = TempDir::new("test_rw").unwrap();
+        let tmp = Builder::new().prefix("test_rw").tempdir().unwrap();
 
         // Write to file
         assert_eq!((), write_hard_state(tmp.path(), &HardState::default()).unwrap());

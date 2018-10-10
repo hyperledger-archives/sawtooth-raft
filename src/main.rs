@@ -29,7 +29,7 @@ extern crate serde_json;
 extern crate uluru;
 
 #[cfg(test)]
-extern crate tempdir;
+extern crate tempfile;
 
 use log4rs::append::console::ConsoleAppender;
 use log4rs::config::{Appender, Config, Root};

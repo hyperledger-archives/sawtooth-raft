@@ -30,4 +30,4 @@ uluru = "0.2"
 log4rs = { git = "https://github.com/ltseeley/log4rs", branch = "config-loading" }
 
 [dev-dependencies]
-tempdir = "0.3"
+tempfile = "3.0.4"
