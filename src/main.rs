@@ -60,7 +60,10 @@ fn main() {
 
             match log4rs::load_config_file(path, deserializers) {
                 Ok(mut config) => {
-                    config.set_level(args.log_level);
+                    {
+                        let mut root = config.root_mut();
+                        root.set_level(args.log_level);
+                    }
                     config
                 }
                 Err(err) => {
