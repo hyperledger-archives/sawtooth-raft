@@ -24,7 +24,7 @@ use raft::{
 };
 
 use sawtooth_sdk::consensus::{
-    engine::{StartupState, Engine, Update},
+    engine::{StartupState, Engine, Update, Error},
     service::Service,
 };
 
@@ -50,7 +50,7 @@ impl Engine for RaftEngine {
         updates: Receiver<Update>,
         mut service: Box<Service>,
         startup_state: StartupState,
-    ) {
+    ) -> Result<(), Error> {
         let StartupState {
             chain_head,
             local_peer_info,
@@ -114,6 +114,8 @@ impl Engine for RaftEngine {
                 break;
             }
         }
+
+        Ok(())
     }
 
     fn version(&self) -> String {
