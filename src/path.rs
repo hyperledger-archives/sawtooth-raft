@@ -18,7 +18,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-const DEFAULT_DATA_DIR: &str = "/var/lib/sawtooth-raft";
+const DEFAULT_DATA_DIR: &str = "/var/lib/sawtooth-raft-engine";
 
 pub struct PathConfig {
     pub data_dir: PathBuf,

@@ -1,4 +1,4 @@
-sawtooth-raft (@VERSION@) unstable; urgency=low
+sawtooth-raft-engine (@VERSION@) unstable; urgency=low
 
   * change data here
 

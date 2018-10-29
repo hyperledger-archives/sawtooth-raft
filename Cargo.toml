@@ -1,5 +1,5 @@
 [package]
-name = "sawtooth-raft"
+name = "sawtooth-raft-engine"
 version = "0.1.0"
 authors = ["Intel Corporation"]
 description = "Hyperledger Sawtooth Raft consensus engine"
@@ -8,9 +8,9 @@ description = "Hyperledger Sawtooth Raft consensus engine"
 maintainer = "sawtooth"
 depends = "$auto,rsyslog"
 assets = [
-    ["packaging/systemd/sawtooth-raft.service", "/lib/systemd/system/sawtooth-raft.service", "644"],
-    ["packaging/systemd/sawtooth-raft", "/etc/default/sawtooth-raft", "644"],
-    ["target/release/sawtooth-raft", "/usr/bin/sawtooth-raft", "755"]
+    ["packaging/systemd/sawtooth-raft-engine.service", "/lib/systemd/system/sawtooth-raft-engine.service", "644"],
+    ["packaging/systemd/sawtooth-raft-engine", "/etc/default/sawtooth-raft-engine", "644"],
+    ["target/release/raft-engine", "/usr/bin/raft-engine", "755"]
 ]
 maintainer-scripts = "packaging/ubuntu"
 
@@ -31,3 +31,7 @@ log4rs = { git = "https://github.com/ltseeley/log4rs", branch = "config-loading"
 
 [dev-dependencies]
 tempfile = "3.0.4"
+
+[[bin]]
+name = "raft-engine"
+path = "src/main.rs"

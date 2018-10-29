@@ -20,8 +20,8 @@ After=network.target
 [Service]
 User=sawtooth
 Group=sawtooth
-EnvironmentFile=-/etc/default/sawtooth-raft
-ExecStart=/usr/bin/sawtooth-raft $SAWTOOTH_RAFT_ARGS
+EnvironmentFile=-/etc/default/sawtooth-raft-engine
+ExecStart=/usr/bin/raft-engine $SAWTOOTH_RAFT_ENGINE_ARGS
 Restart=on-failure
 
 [Install]

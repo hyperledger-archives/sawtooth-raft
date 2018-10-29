@@ -56,4 +56,4 @@ RUN apt-get update \
  && dpkg -i /tmp/sawtooth*.deb || true \
  && apt-get -f -y install
 
-CMD sawtooth-raft
+CMD raft-engine
