@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::time::{Duration, Instant};
 
-use protobuf::{self, Message as ProtobufMessage, ProtobufError};
+use protobuf::{self, Message as ProtobufMessage};
 use raft::{
     self,
     eraftpb::{
@@ -32,7 +32,7 @@ use raft::{
 };
 
 use sawtooth_sdk::consensus::{
-    engine::{Block, BlockId, PeerId, PeerMessage, Error},
+    engine::{Block, BlockId, PeerId, Error},
     service::Service,
 };
 
@@ -169,8 +169,8 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         }
     }
 
-    pub fn on_peer_message(&mut self, message: &PeerMessage) {
-        let raft_message = try_into_raft_message(&message)
+    pub fn on_peer_message(&mut self, message: &[u8]) {
+        let raft_message = protobuf::parse_from_bytes::<RaftMessage>(message)
             .expect("Failed to interpret bytes as Raft message");
         self.raw_node.step(raft_message).unwrap_or_else(|err| {
             warn!("Peer({:?}) encountered error when stepping: {:?}", self.peer_id, err);
@@ -208,13 +208,12 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
     }
 
     fn send_msg(&mut self, raft_msg: &RaftMessage) {
-        let peer_msg = try_into_peer_message(raft_msg)
-            .expect("Failed to convert into peer message");
+        let msg = raft_msg.write_to_bytes().expect("Could not serialize RaftMessage");
         if let Some(peer_id) = self.raft_id_to_peer_id.get(&raft_msg.to) {
             match self.service.send_to(
                 peer_id,
                 "",
-                peer_msg.content,
+                msg.to_vec(),
             ) {
                 Ok(_) => (),
                 Err(Error::UnknownPeer(s)) => warn!("Tried to send to disconnected peer: {}", s),
@@ -419,15 +418,4 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         self.raw_node.apply_conf_change(&change);
         ReadyStatus::Continue
     }
-}
-
-fn try_into_raft_message(message: &PeerMessage) -> Result<RaftMessage, ProtobufError> {
-    protobuf::parse_from_bytes(&message.content)
-}
-
-fn try_into_peer_message(message: &RaftMessage) -> Result<PeerMessage, ProtobufError> {
-    Ok(PeerMessage {
-        message_type: String::new(),
-        content: message.write_to_bytes()?,
-    })
 }

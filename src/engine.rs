@@ -133,7 +133,7 @@ fn handle_update<S: StorageExt>(node: &mut SawtoothRaftNode<S>, update: Update) 
         Update::BlockNew(block) => node.on_block_new(block),
         Update::BlockValid(block_id) => node.on_block_valid(block_id),
         Update::BlockCommit(block_id) => node.on_block_commit(&block_id),
-        Update::PeerMessage(message, _id) => node.on_peer_message(&message),
+        Update::PeerMessage(message, _id) => node.on_peer_message(&message.content),
         Update::Shutdown => return false,
 
         update => warn!("Unhandled update: {:?}", update),
