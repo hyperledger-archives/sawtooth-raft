@@ -16,6 +16,8 @@
 # -------------=== raft build ===-------------
 FROM ubuntu:xenial as raft-builder
 
+ENV VERSION=AUTO_STRICT
+
 RUN apt-get update \
  && apt-get install -y -q --allow-downgrades \
     build-essential \
