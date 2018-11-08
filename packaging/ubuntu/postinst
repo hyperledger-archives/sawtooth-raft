@@ -18,7 +18,7 @@
 set -e
 
 directories="
-    /var/lib/sawtooth-raft
+    /var/lib/sawtooth-raft-engine
 "
 
 user="sawtooth"

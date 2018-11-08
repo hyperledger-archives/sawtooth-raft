@@ -102,7 +102,7 @@ services:
     volumes:
       - ${SAWOOTH_RAFT:-..}:/project/sawtooth-raft
     working_dir: /project/sawtooth-raft/
-    command: ./target/debug/sawtooth-raft --connect tcp://validator:5050 -v
+    command: ./target/debug/raft-engine --connect tcp://validator:5050 -v
 
   rest-api:
     image: sawtooth-rest-api

@@ -182,7 +182,7 @@ indicating that the Raft engine has been registered:
 
 .. code-block:: console
 
-  Consensus engine registered: sawtooth-raft X.Y.Z
+  Consensus engine registered: sawtooth-raft-engine X.Y.Z
 
 If you do not see the message above in the validator logs, make sure that the
 Raft engine is properly connecting to the validator (see `Connecting to the
