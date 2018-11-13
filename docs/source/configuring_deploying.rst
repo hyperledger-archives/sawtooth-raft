@@ -397,3 +397,7 @@ setting has been updated to no longer include the old node's public key, the
 leader will stop sending messages to the node and ignore any messages from it.
 Once this happens, the node can be shutdown safely since it is no longer
 participating in the network.
+
+.. Licensed under Creative Commons Attribution 4.0 International License
+.. https://creativecommons.org/licenses/by/4.0/
+
