@@ -8,4 +8,4 @@ services:
     image: sawtooth-raft-engine:$ISOLATION_ID
     build:
       context: .
-      dockerfile: Dockerfile-installed
+      dockerfile: Dockerfile-installed-${DISTRO}
