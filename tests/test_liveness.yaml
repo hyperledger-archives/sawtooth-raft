@@ -66,7 +66,8 @@ services:
           -o config-genesis.batch && \
         sawset proposal create \
           -k /etc/sawtooth/keys/validator.priv \
-          sawtooth.consensus.algorithm=raft \
+          sawtooth.consensus.algorithm.name=sawtooth-raft-engine \
+          sawtooth.consensus.algorithm.version=0.1.0 \
           sawtooth.consensus.raft.peers=\\['\\\"'$$(cat /etc/sawtooth/keys/validator.pub)'\\\"','\\\"'$$(cat /etc/sawtooth/keys/validator-2.pub)'\\\"','\\\"'$$(cat /etc/sawtooth/keys/validator-3.pub)'\\\"'\\]
           sawtooth.consensus.raft.period=1 \
           -o config.batch && \
