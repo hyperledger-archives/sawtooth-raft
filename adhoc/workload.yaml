@@ -29,7 +29,7 @@ volumes:
 services:
 
   workload:
-    image: sawtooth-intkey-workload
+    image: hyperledger/sawtooth-intkey-workload:nightly
     labels:
       - "com.sawtooth.isolation_id=${ISOLATION_ID:-}"
     command: "bash -c \"\
