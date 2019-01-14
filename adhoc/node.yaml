@@ -32,7 +32,7 @@ volumes:
 services:
 
   validator:
-    image: sawtooth-validator
+    image: hyperledger/sawtooth-validator:nightly
     labels:
       - "com.sawtooth.isolation_id=${ISOLATION_ID:-}"
     command: "bash -c \"\
@@ -49,7 +49,8 @@ services:
           -o config-genesis.batch && \
         sawset proposal create \
           -k /shared_data/keys/settings.priv \
-          sawtooth.consensus.algorithm=raft \
+          sawtooth.consensus.algorithm.name=sawtooth-raft-engine \
+          sawtooth.consensus.algorithm.version=0.1.0 \
           sawtooth.consensus.raft.peers=\\['\\\"'$$(cd /shared_data/validators && paste $$(ls -1) -d , | sed s/,/\\\\\\\",\\\\\\\"/g)'\\\"'\\]
           -o config.batch && \
         sawadm genesis \
@@ -105,7 +106,7 @@ services:
     command: ./target/debug/raft-engine --connect tcp://validator:5050 -v
 
   rest-api:
-    image: sawtooth-rest-api
+    image: hyperledger/sawtooth-rest-api:nightly
     labels:
       - "com.sawtooth.isolation_id=${ISOLATION_ID:-}"
     command: "bash -c \"
@@ -124,14 +125,14 @@ services:
     stop_signal: SIGKILL
 
   intkey-tp-python:
-    image: sawtooth-intkey-tp-python
+    image: hyperledger/sawtooth-intkey-tp-python:nightly
     labels:
       - "com.sawtooth.isolation_id=${ISOLATION_ID:-}"
     command: intkey-tp-python -vv -C tcp://validator:4004
     stop_signal: SIGKILL
 
   settings-tp:
-    image: sawtooth-settings-tp
+    image: hyperledger/sawtooth-settings-tp:nightly
     labels:
       - "com.sawtooth.isolation_id=${ISOLATION_ID:-}"
     command: settings-tp -C tcp://validator:4004 -v
