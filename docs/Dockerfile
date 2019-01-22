@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y -q \
     git \
     curl \
     dvipng \
+    latexmk \
     make \
     python3-pip \
     sudo \
@@ -35,7 +36,7 @@ RUN apt-get update && apt-get install -y -q \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install \
-    sphinx==1.5.6 \
+    sphinx \
     sphinxcontrib-httpdomain \
     sphinxcontrib-openapi \
     sphinx_rtd_theme
