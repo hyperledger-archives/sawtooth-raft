@@ -193,6 +193,16 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             }
             _ => false,
         } {
+            match self.service.summarize_block() {
+                //Ignore Ok condition
+                Ok(_) => {},
+                Err(Error::BlockNotReady) => {
+                    debug!("Leader({:?}) tried to summarize block but block not ready", self.peer_id);
+                    return;
+                },
+                Err(err) => panic!("Failed to summarize block: {:?}", err),
+            };
+
             match self.service.finalize_block(vec![]) {
                 Ok(block_id) => {
                     debug!("Leader({:?}) transition to Publishing block {:?}", self.peer_id, block_id);
