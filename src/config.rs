@@ -75,7 +75,7 @@ impl<S: StorageExt> fmt::Debug for RaftEngineConfig<S> {
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(borrowed_box))]
+#[allow(clippy::ptr_arg, clippy::borrowed_box)]
 pub fn load_raft_config(
     peer_id: &PeerId,
     block_id: BlockId,
@@ -131,6 +131,7 @@ pub fn load_raft_config(
 }
 
 /// Create a u64 value from the last eight bytes in the peer id
+#[allow(clippy::ptr_arg)]
 pub fn peer_id_to_raft_id(peer_id: &PeerId) -> u64 {
     let bytes: &[u8] = peer_id.as_ref();
     assert!(bytes.len() >= 8);

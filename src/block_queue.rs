@@ -70,6 +70,7 @@ impl BlockQueue {
     }
 
     // Mark the block as validated; called when the BlockValid message is received by the engine
+    #[allow(clippy::ptr_arg)]
     pub fn block_valid(&mut self, block_id: &BlockId) {
         self.validator_backlog
             .entry(block_id.clone())

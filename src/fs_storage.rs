@@ -325,7 +325,7 @@ fn read_entries<P: AsRef<Path>>(
 
 // DirEntry mappers
 
-#[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
+#[allow(clippy::needless_pass_by_value)]
 fn dir_entry_to_raft_entry(dir_entry: fs::DirEntry) -> io::Result<Entry> {
     read_pb_from_file(dir_entry.path())
 }

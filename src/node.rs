@@ -131,12 +131,13 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             );
             info!("Leader({:?}) proposed block {:?}", self.peer_id, block_id);
             self.raw_node
-                .propose(vec![], block_id.clone().into())
+                .propose(vec![], block_id.clone())
                 .expect("Failed to propose block to Raft");
             self.leader_state = Some(LeaderState::Proposing(block_id));
         }
     }
 
+    #[allow(clippy::ptr_arg)]
     pub fn on_block_commit(&mut self, block_id: &BlockId) {
         if match self.leader_state {
             Some(LeaderState::Committing(ref committing)) => committing == block_id,
@@ -386,6 +387,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         ReadyStatus::Continue
     }
 
+    #[allow(clippy::ptr_arg)]
     fn commit_block(&mut self, block_id: &BlockId) {
         if match self.leader_state {
             Some(LeaderState::Proposing(ref proposed)) => block_id == proposed,
