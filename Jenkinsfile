@@ -80,10 +80,19 @@ pipeline {
             }
         }
 
+        stage("Run Lint") {
+            steps {
+                sh 'docker-compose run --rm raft-engine cargo fmt --version'
+                sh 'docker-compose run --rm raft-engine cargo fmt -- --check'
+                sh 'docker-compose run --rm raft-engine cargo clippy --version'
+                sh 'docker-compose run --rm raft-engine cargo clippy --'
+            }
+        }
+
         stage("Build Raft") {
             steps {
-              sh "docker-compose up --build --abort-on-container-exit --force-recreate --renew-anon-volumes --exit-code-from raft-engine"
-              sh "docker-compose -f docker-compose-installed.yaml build"
+                sh "docker-compose up --build --abort-on-container-exit --force-recreate --renew-anon-volumes --exit-code-from raft-engine"
+                sh "docker-compose -f docker-compose-installed.yaml build"
             }
         }
 
