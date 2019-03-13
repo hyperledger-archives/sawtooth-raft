@@ -15,13 +15,15 @@
  * ------------------------------------------------------------------------------
  */
 
-use std::ops::Range;
 use std::cell::RefCell;
+use std::ops::Range;
 
-use uluru;
 use raft::{
-    self, eraftpb::{ConfState, Entry, HardState, Snapshot}, RaftState, Storage,
+    self,
+    eraftpb::{ConfState, Entry, HardState, Snapshot},
+    RaftState, Storage,
 };
+use uluru;
 
 use storage::StorageExt;
 
@@ -61,7 +63,9 @@ struct TermCache(uluru::LRUCache<[uluru::Entry<(u64, u64)>; CACHE_SIZE]>);
 
 impl TermCache {
     fn get(&mut self, idx: u64) -> Option<u64> {
-        self.0.find(|(index, _term)| *index == idx).map(|(_index, term)| *term)
+        self.0
+            .find(|(index, _term)| *index == idx)
+            .map(|(_index, term)| *term)
     }
 
     fn insert(&mut self, index: u64, term: u64) {
@@ -151,10 +155,8 @@ impl<S: StorageExt> Storage for CachedStorage<S> {
                     }
                     Ok(range)
                 }
-                None => {
-                    self.storage.entries(low, high, max_size)
-                }
-            }
+                None => self.storage.entries(low, high, max_size),
+            };
         }
 
         match self.storage.entries(low, high, max_size) {
@@ -199,7 +201,6 @@ impl<S: StorageExt> Storage for CachedStorage<S> {
         if let Some(ref last_index) = cache.last_index {
             return Ok(*last_index);
         }
-
 
         self.storage.last_index().map(|last_index| {
             cache.last_index = Some(last_index);
@@ -265,13 +266,12 @@ impl<S: StorageExt> StorageExt for CachedStorage<S> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use tempfile::TempDir;
     use tempfile::Builder;
+    use tempfile::TempDir;
 
     use fs_storage::FsStorage;
     use storage::tests;
@@ -279,7 +279,7 @@ mod tests {
     fn create_temp_storage(name: &str) -> (TempDir, CachedStorage<FsStorage>) {
         let tmp = Builder::new().prefix(name).tempdir().unwrap();
         let storage = CachedStorage::new(
-            FsStorage::with_data_dir(tmp.path().into()).expect("Failed to create FsStorage")
+            FsStorage::with_data_dir(tmp.path().into()).expect("Failed to create FsStorage"),
         );
         (tmp, storage)
     }
@@ -307,7 +307,6 @@ mod tests {
         let (_tmp, storage) = create_temp_storage("test_first_and_last_index");
         tests::test_first_and_last_index(storage);
     }
-
 
     #[test]
     fn test_storage_ext_compact() {

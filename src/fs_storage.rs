@@ -22,7 +22,11 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use protobuf::{self, Message as ProtobufMessage};
-use raft::{self, eraftpb::{ConfState, Entry, HardState, Snapshot}, RaftState, Storage};
+use raft::{
+    self,
+    eraftpb::{ConfState, Entry, HardState, Snapshot},
+    RaftState, Storage,
+};
 
 use storage::StorageExt;
 
@@ -97,7 +101,6 @@ impl Storage for FsStorage {
                             _ => err_compacted(),
                         }
                     }
-
                 } else {
                     Err(raft::Error::from(err))
                 }
@@ -142,8 +145,7 @@ impl StorageExt for FsStorage {
             // Panics to mirror behavior in MemStorage
             panic!(
                 "Tried to create snapshot with index {}, but last index is {}",
-                index,
-                last_index,
+                index, last_index,
             );
         }
 
@@ -233,18 +235,16 @@ impl StorageExt for FsStorage {
     }
 }
 
-
 // Helper functions
 
 fn init_raft_state_if_missing<P: AsRef<Path>>(data_dir: P) -> io::Result<()> {
     if let Err(err) = read_raft_state(&data_dir) {
         if err.kind() == io::ErrorKind::NotFound {
-            return init_raft_state(&data_dir)
+            return init_raft_state(&data_dir);
         }
     }
     Ok(())
 }
-
 
 // Error helper functions
 
@@ -259,7 +259,6 @@ fn err_unavailable<T>() -> Result<T, raft::Error> {
 fn err_snapshot_out_of_date<T>() -> Result<T, raft::Error> {
     Err(raft::Error::Store(raft::StorageError::SnapshotOutOfDate))
 }
-
 
 // Readers
 
@@ -308,11 +307,14 @@ fn read_entry<P: AsRef<Path>>(entries_dir: P, index: u64) -> io::Result<Entry> {
     read_pb_from_file(entries_dir.as_ref().join(format!("{}", index)))
 }
 
-fn read_entries<P: AsRef<Path>>(entries_dir: P, range: Option<Range<u64>>) -> io::Result<Vec<Entry>> {
+fn read_entries<P: AsRef<Path>>(
+    entries_dir: P,
+    range: Option<Range<u64>>,
+) -> io::Result<Vec<Entry>> {
     match range {
-        Some(range) => {
-            range.map(|index| read_entry(entries_dir.as_ref(), index)).collect()
-        }
+        Some(range) => range
+            .map(|index| read_entry(entries_dir.as_ref(), index))
+            .collect(),
         None => {
             let mut entries = read_and_map_dir(entries_dir.as_ref(), dir_entry_to_raft_entry)?;
             entries.sort_unstable_by(|a, b| a.index.cmp(&b.index));
@@ -321,14 +323,12 @@ fn read_entries<P: AsRef<Path>>(entries_dir: P, range: Option<Range<u64>>) -> io
     }
 }
 
-
 // DirEntry mappers
 
 #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
 fn dir_entry_to_raft_entry(dir_entry: fs::DirEntry) -> io::Result<Entry> {
     read_pb_from_file(dir_entry.path())
 }
-
 
 // Writers
 
@@ -373,14 +373,13 @@ fn remove_entry<P: AsRef<Path>>(entries_dir: P, index: u64) -> io::Result<()> {
     fs::remove_file(entries_dir.as_ref().join(format!("{}", index)))
 }
 
-
 // Generic functions
 
 fn read_pb_from_file<P: AsRef<Path>, O: ProtobufMessage>(path: P) -> io::Result<O> {
-    fs::read(path)
-        .and_then(|payload|
-            protobuf::parse_from_bytes(&payload)
-                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err)))
+    fs::read(path).and_then(|payload| {
+        protobuf::parse_from_bytes(&payload)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+    })
 }
 
 fn write_pb_to_file<P: AsRef<Path>, O: ProtobufMessage>(path: P, pb: &O) -> io::Result<()> {
@@ -389,7 +388,10 @@ fn write_pb_to_file<P: AsRef<Path>, O: ProtobufMessage>(path: P, pb: &O) -> io::
         .and_then(|payload| fs::write(path, &payload))
 }
 
-fn read_and_map_dir<T, P: AsRef<Path>>(path: P, f: fn(fs::DirEntry) -> io::Result<T>) -> io::Result<Vec<T>> {
+fn read_and_map_dir<T, P: AsRef<Path>>(
+    path: P,
+    f: fn(fs::DirEntry) -> io::Result<T>,
+) -> io::Result<Vec<T>> {
     Ok(fs::read_dir(path)?
         .map(|result| result.map(f)?)
         .collect::<Result<Vec<T>, io::Error>>()?)
@@ -399,7 +401,10 @@ fn read_u64_from_file<P: AsRef<Path>>(path: P) -> io::Result<u64> {
     const SIZE: usize = mem::size_of::<u64>();
     let payload = fs::read(path)?;
     if payload.len() != SIZE {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "File does not contain u64"))
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "File does not contain u64",
+        ));
     }
     let mut buf: [u8; SIZE] = [0; SIZE];
     (&mut buf[..]).copy_from_slice(&payload);
@@ -409,7 +414,6 @@ fn read_u64_from_file<P: AsRef<Path>>(path: P) -> io::Result<u64> {
 fn write_u64_to_file<P: AsRef<Path>>(path: P, term: u64) -> io::Result<()> {
     fs::write(path, &u64_to_bytes(term))
 }
-
 
 // Remove when u64::to_bytes is stabilized
 #[inline]
@@ -423,13 +427,12 @@ fn u64_from_bytes(bytes: [u8; mem::size_of::<u64>()]) -> u64 {
     unsafe { mem::transmute(bytes) }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use tempfile::TempDir;
     use tempfile::Builder;
+    use tempfile::TempDir;
 
     use storage::tests;
 
@@ -445,8 +448,14 @@ mod tests {
         let tmp = Builder::new().prefix("test_rw").tempdir().unwrap();
 
         // Write to file
-        assert_eq!((), write_hard_state(tmp.path(), &HardState::default()).unwrap());
-        assert_eq!((), write_snapshot(tmp.path(), &Snapshot::default()).unwrap());
+        assert_eq!(
+            (),
+            write_hard_state(tmp.path(), &HardState::default()).unwrap()
+        );
+        assert_eq!(
+            (),
+            write_snapshot(tmp.path(), &Snapshot::default()).unwrap()
+        );
         assert_eq!((), write_entry(tmp.path(), &Entry::default()).unwrap());
 
         // Verify files created
@@ -469,7 +478,6 @@ mod tests {
         assert_eq!(Snapshot::default(), read_snapshot(tmp.path()).unwrap());
         assert_eq!(Entry::default(), read_entry(tmp.path(), 0).unwrap());
     }
-
 
     #[test]
     fn test_storage_initial_state() {
@@ -494,7 +502,6 @@ mod tests {
         let (_tmp, storage) = create_temp_storage("test_first_and_last_index");
         tests::test_first_and_last_index(storage);
     }
-
 
     #[test]
     fn test_storage_ext_compact() {

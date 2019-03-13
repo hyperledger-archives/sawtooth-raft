@@ -17,9 +17,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
- use sawtooth_sdk::consensus::{
-     engine::{Block, BlockId},
- };
+use sawtooth_sdk::consensus::engine::{Block, BlockId};
 
 struct BlockStatus {
     // Block received in BlockNew message
@@ -63,16 +61,22 @@ impl BlockQueue {
     // Save the block; called when the BlockNew message is received by the engine
     pub fn block_new(&mut self, block: Block) {
         let block_id = block.block_id.clone();
-        self.validator_backlog.entry(block_id).and_modify(|status| {
-            status.block = Some(block.clone());
-        }).or_insert_with(|| BlockStatus::with_block(block));
+        self.validator_backlog
+            .entry(block_id)
+            .and_modify(|status| {
+                status.block = Some(block.clone());
+            })
+            .or_insert_with(|| BlockStatus::with_block(block));
     }
 
     // Mark the block as validated; called when the BlockValid message is received by the engine
     pub fn block_valid(&mut self, block_id: &BlockId) {
-        self.validator_backlog.entry(block_id.clone()).and_modify(|status| {
-            status.block_valid = true;
-        }).or_insert_with(BlockStatus::with_valid);
+        self.validator_backlog
+            .entry(block_id.clone())
+            .and_modify(|status| {
+                status.block_valid = true;
+            })
+            .or_insert_with(BlockStatus::with_valid);
     }
 
     // Mark the block for commit; called when the engine wants to commit the block

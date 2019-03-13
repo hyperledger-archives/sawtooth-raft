@@ -21,7 +21,10 @@ use std::time::Duration;
 
 use hex;
 use raft::Config as RaftConfig;
-use sawtooth_sdk::consensus::{engine::{BlockId, PeerId}, service::Service};
+use sawtooth_sdk::consensus::{
+    engine::{BlockId, PeerId},
+    service::Service,
+};
 use serde_json;
 
 use cached_storage::CachedStorage;
@@ -53,7 +56,7 @@ impl<S: StorageExt> RaftEngineConfig<S> {
 
 fn create_storage() -> impl StorageExt {
     CachedStorage::new(
-        FsStorage::with_data_dir(get_path_config().data_dir).expect("Failed to create FsStorage")
+        FsStorage::with_data_dir(get_path_config().data_dir).expect("Failed to create FsStorage"),
     )
 }
 
@@ -78,7 +81,6 @@ pub fn load_raft_config(
     block_id: BlockId,
     service: &mut Box<Service>,
 ) -> RaftEngineConfig<impl StorageExt> {
-
     let mut config = RaftEngineConfig::new(create_storage());
     config.raft.id = peer_id_to_raft_id(peer_id);
     config.raft.tag = format!("[{}]", config.raft.id);
@@ -91,7 +93,10 @@ pub fn load_raft_config(
     ];
 
     let settings: HashMap<String, String> = service
-        .get_settings(block_id, settings_keys.into_iter().map(String::from).collect())
+        .get_settings(
+            block_id,
+            settings_keys.into_iter().map(String::from).collect(),
+        )
         .expect("Failed to get settings keys");
 
     if let Some(heartbeat_tick) = settings.get("sawtooth.consensus.raft.heartbeat_tick") {
@@ -145,7 +150,8 @@ pub fn get_peers_from_settings(settings: &HashMap<String, String>) -> Vec<PeerId
     let peers: Vec<String> = serde_json::from_str(peers_setting_value)
         .expect("Invalid value at 'sawtooth.consensus.raft.peers'");
 
-    peers.into_iter()
+    peers
+        .into_iter()
         .map(|s| PeerId::from(hex::decode(s).expect("Peer id not valid hex")))
         .collect()
 }

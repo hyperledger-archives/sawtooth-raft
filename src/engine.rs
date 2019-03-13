@@ -15,24 +15,20 @@
  * ------------------------------------------------------------------------------
  */
 
-use std::time::Duration;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
+use std::time::Duration;
 
-use raft::{
-    raw_node::RawNode,
-    Peer as RaftPeer,
-};
+use raft::{raw_node::RawNode, Peer as RaftPeer};
 
 use sawtooth_sdk::consensus::{
-    engine::{StartupState, Engine, Update, Error},
+    engine::{Engine, Error, StartupState, Update},
     service::Service,
 };
 
 use config::{self, RaftEngineConfig};
-use ticker;
 use node::{ReadyStatus, SawtoothRaftNode};
 use storage::StorageExt;
-
+use ticker;
 
 pub struct RaftEngine {}
 
@@ -58,37 +54,30 @@ impl Engine for RaftEngine {
         } = startup_state;
 
         // Create the configuration for the Raft node.
-        let cfg = config::load_raft_config(
-            &local_peer_info.peer_id,
-            chain_head.block_id,
-            &mut service
-        );
+        let cfg =
+            config::load_raft_config(&local_peer_info.peer_id, chain_head.block_id, &mut service);
         info!("Raft Engine Config Loaded: {:?}", cfg);
         let RaftEngineConfig {
             peers,
             period,
             raft: raft_config,
-            storage: raft_storage
+            storage: raft_storage,
         } = cfg;
 
         // Create the Raft node.
-        let raft_peers: Vec<RaftPeer> = raft_config.peers
+        let raft_peers: Vec<RaftPeer> = raft_config
+            .peers
             .iter()
-            .map(|id| RaftPeer { id: *id, context: None })
+            .map(|id| RaftPeer {
+                id: *id,
+                context: None,
+            })
             .collect();
-        let raw_node = RawNode::new(
-            &raft_config,
-            raft_storage,
-            raft_peers
-        ).expect("Failed to create new RawNode");
+        let raw_node = RawNode::new(&raft_config, raft_storage, raft_peers)
+            .expect("Failed to create new RawNode");
 
-        let mut node = SawtoothRaftNode::new(
-            local_peer_info.peer_id,
-            raw_node,
-            service,
-            peers,
-            period
-        );
+        let mut node =
+            SawtoothRaftNode::new(local_peer_info.peer_id, raw_node, service, peers, period);
 
         let mut raft_ticker = ticker::Ticker::new(RAFT_TIMEOUT);
         let mut timeout = RAFT_TIMEOUT;
