@@ -42,4 +42,4 @@ ENV PATH=$PATH:/protoc3/bin:/project/sawtooth-core/bin:/root/.cargo/bin \
 
 WORKDIR /project/sawtooth-raft
 
-CMD cargo build
+CMD cargo build --release

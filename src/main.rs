@@ -128,8 +128,7 @@ fn parse_args() -> RaftCliArgs {
     let log_level = match matches.occurrences_of("verbose") {
         0 => log::LevelFilter::Warn,
         1 => log::LevelFilter::Info,
-        2 => log::LevelFilter::Debug,
-        3 | _ => log::LevelFilter::Trace,
+        2 | _ => log::LevelFilter::Trace,
     };
 
     let log_config = matches.value_of("logconfig").map(|s| s.into());

@@ -103,7 +103,7 @@ services:
     volumes:
       - ${SAWOOTH_RAFT:-..}:/project/sawtooth-raft
     working_dir: /project/sawtooth-raft/
-    command: ./target/debug/raft-engine --connect tcp://validator:5050 -v
+    command: ./target/release/raft-engine --connect tcp://validator:5050 -v
 
   rest-api:
     image: hyperledger/sawtooth-rest-api:nightly

@@ -142,7 +142,7 @@ services:
     volumes:
       - ..:/project/sawtooth-raft
     working_dir: /project/sawtooth-raft/
-    command: ./target/debug/raft-engine --connect tcp://validator-1:5050 -v
+    command: ./target/release/raft-engine --connect tcp://validator-1:5050 -v
     stop_signal: SIGKILL
     environment:
       RUST_BACKTRACE: full
@@ -155,7 +155,7 @@ services:
     volumes:
       - ..:/project/sawtooth-raft
     working_dir: /project/sawtooth-raft/
-    command: ./target/debug/raft-engine --connect tcp://validator-2:5050 -v
+    command: ./target/release/raft-engine --connect tcp://validator-2:5050 -v
     stop_signal: SIGKILL
     environment:
       RUST_BACKTRACE: full
@@ -168,7 +168,7 @@ services:
     volumes:
       - ..:/project/sawtooth-raft
     working_dir: /project/sawtooth-raft/
-    command: ./target/debug/raft-engine --connect tcp://validator-3:5050 -v
+    command: ./target/release/raft-engine --connect tcp://validator-3:5050 -v
     stop_signal: SIGKILL
     environment:
       RUST_BACKTRACE: full
