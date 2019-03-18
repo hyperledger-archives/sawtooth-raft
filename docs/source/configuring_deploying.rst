@@ -69,8 +69,10 @@ genesis block.
 Required Settings
 -----------------
 
-* ``sawtooth.consensus.algorithm`` - Tells the network which consensus engine to
-  use. Must be set to ``raft``.
+* ``sawtooth.consensus.algorithm.name`` - Tells the network the name of the
+  consensus engine to use. Must be set to ``raft``.
+* ``sawtooth.consensus.algorithm.version`` - Tells the network the version of
+  the consensus engine to use. Must match the version of Raft being used.
 * ``sawtooth.consensus.raft.peers`` - A JSON list of public keys of all
   validators in the network, formatted as hex strings.
 
@@ -400,4 +402,3 @@ participating in the network.
 
 .. Licensed under Creative Commons Attribution 4.0 International License
 .. https://creativecommons.org/licenses/by/4.0/
-
