@@ -244,12 +244,20 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
 
         let is_leader = self.raw_node.raft.state == raft::StateRole::Leader;
         if is_leader {
-            // We just became the leader, so we need to start building a block
+            // We just became the leader
             if self.leader_state.is_none() {
-                debug!("Leader({:?}) became leader, intializing block", self.peer_id);
+                // Check if we stepped up as leader from follower while in committing state
+                if let Some(FollowerState::Committing(ref block_id)) = self.follower_state {
+                    debug!("Follower({:?}) became leader while it was in committing state",
+                        self.peer_id);
+                    self.leader_state = Some(LeaderState::Committing(block_id.clone()));
+                } else {
+                    // We need to start building a block
+                    debug!("Leader({:?}) became leader, intializing block", self.peer_id);
+                    self.leader_state = Some(LeaderState::Building(Instant::now()));
+                    self.service.initialize_block(None).expect("Failed to initialize block");
+                }
                 self.follower_state = None;
-                self.leader_state = Some(LeaderState::Building(Instant::now()));
-                self.service.initialize_block(None).expect("Failed to initialize block");
             }
             // If the peer is leader, the leader can send messages to other followers ASAP.
             for msg in ready.messages.drain(..) {
