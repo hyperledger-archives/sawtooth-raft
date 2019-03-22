@@ -331,10 +331,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         }
 
         // Commit next committable block from backlog (if there is one)
-        let chain_head = self.service
-            .get_chain_head()
-            .expect("Chain head should not be none");
-        if let Some(block_id) = self.block_queue.get_next_committable(&chain_head) {
+        if let Some(block_id) = self.block_queue.get_next_committable() {
             self.commit_block(&block_id);
         };
 
