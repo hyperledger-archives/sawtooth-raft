@@ -1,0 +1,362 @@
+# Copyright 2019 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ------------------------------------------------------------------------------
+
+version: "3.4"
+
+networks:
+  raftnetwork:
+    external:
+      name: raftnetwork
+
+services:
+
+  validator-1:
+    image: "hyperledger/sawtooth-validator:${TAG}"
+    networks:
+      raftnetwork:
+        aliases:
+          - validator-1
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${node1}"]
+    hostname: validator-1
+    volumes:
+      - /home/${USER}/validator_keys:/validator_keys
+    expose:
+      - 4004
+      - 8800
+      - 5005
+    working_dir: /root
+    command: "bash -c \"\
+        cp /validator_keys/validator-1.priv /etc/sawtooth/keys/validator.priv; \
+        cp /validator_keys/validator-1.pub /etc/sawtooth/keys/validator.pub; \
+        sawset genesis \
+          -k /etc/sawtooth/keys/validator.priv \
+          -o config-genesis.batch && \
+        sawset proposal create \
+          -k /etc/sawtooth/keys/validator.priv \
+          sawtooth.consensus.algorithm.name=raft \
+          sawtooth.consensus.algorithm.version=0.1 \
+          sawtooth.gossip.time_to_live=0
+          sawtooth.consensus.raft.peers=\\['\\\"'$$(cat /validator_keys/validator-1.pub)'\\\"','\\\"'$$(cat /validator_keys/validator-2.pub)'\\\"','\\\"'$$(cat /validator_keys/validator-3.pub)'\\\"'\\]
+          sawtooth.consensus.raft.period=6000 \
+          sawtooth.consensus.raft.heartbeat_tick=40 \
+          sawtooth.consensus.raft.election_tick=200 \
+          sawtooth.consensus.raft.leader_change_block_interval=0 \
+          sawtooth.consensus.raft.leader_change_time_interval=360000 \
+          sawtooth.publisher.max_batches_per_block=70 \
+          -o config.batch && \
+        sawadm genesis \
+          config-genesis.batch config.batch && \
+        echo $$(cat /etc/sawtooth/keys/validator.pub); \
+        sawtooth-validator -v \
+            --endpoint tcp://validator-1:8800 \
+            --bind component:tcp://eth0:4004 \
+            --bind network:tcp://eth0:8800 \
+            --bind consensus:tcp://eth0:5050 \
+            --peering static \
+            --scheduler parallel \
+            --maximum-peer-connectivity 1000 \ 
+    \""
+    stop_signal: SIGKILL
+
+  validator-2:
+    image: "hyperledger/sawtooth-validator:${TAG}"
+    networks:
+      raftnetwork:
+        aliases:
+          - validator-2
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${node2}"]
+    hostname: validator-2
+    volumes:
+      - /home/${USER}/validator_keys:/validator_keys
+    expose:
+      - 4004
+      - 8800
+    command: "bash -c \"\
+        cp /validator_keys/validator-2.priv /etc/sawtooth/keys/validator.priv; \
+        cp /validator_keys/validator-2.pub /etc/sawtooth/keys/validator.pub; \
+        echo $$(cat /etc/sawtooth/keys/validator.pub); \
+        sawtooth-validator -v \
+            --endpoint tcp://validator-2:8800 \
+            --bind component:tcp://eth0:4004 \
+            --bind network:tcp://eth0:8800 \
+            --bind consensus:tcp://eth0:5050 \
+            --peering static \
+            --peers tcp://validator-1:8800
+            --scheduler parallel \
+            --maximum-peer-connectivity 1000 \
+    \""
+    stop_signal: SIGKILL
+
+  validator-3:
+    image: "hyperledger/sawtooth-validator:${TAG}"
+    networks:
+      raftnetwork:
+        aliases:
+          - validator-3
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${node3}"]
+    hostname: validator-3
+    volumes:
+      - /home/${USER}/validator_keys:/validator_keys
+    expose:
+      - 4004
+      - 8800
+    command: "bash -c \"\
+        cp /validator_keys/validator-3.priv /etc/sawtooth/keys/validator.priv; \
+        cp /validator_keys/validator-3.pub /etc/sawtooth/keys/validator.pub; \
+        echo $$(cat /etc/sawtooth/keys/validator.pub); \
+        sawtooth-validator -v \
+            --endpoint tcp://validator-3:8800 \
+            --bind component:tcp://eth0:4004 \
+            --bind network:tcp://eth0:8800 \
+            --bind consensus:tcp://eth0:5050 \
+            --peering static \
+            --peers tcp://validator-1:8800,tcp://validator-2:8800
+            --scheduler parallel \
+            --maximum-peer-connectivity 1000 \
+    \""
+    stop_signal: SIGKILL
+
+  raft-1:
+    image: hyperledger/sawtooth-raft-engine:${TAG}
+    networks:
+      raftnetwork:
+        aliases:
+          - raft-1                  
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${node1}"]
+    hostname: raft-1
+    command: raft-engine --connect tcp://validator-1:5050 -vv
+    stop_signal: SIGKILL
+
+  raft-2:
+    image: hyperledger/sawtooth-raft-engine:${TAG}
+    networks:
+      raftnetwork:
+        aliases:
+          - raft-2
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${node2}"]    
+    hostname: raft-2
+    command: raft-engine --connect tcp://validator-2:5050 -vv
+    stop_signal: SIGKILL
+
+  raft-3:
+    image: hyperledger/sawtooth-raft-engine:${TAG}
+    networks:
+      raftnetwork:
+        aliases:
+          - raft-3
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${node3}"]    
+    hostname: raft-3
+    command: raft-engine --connect tcp://validator-3:5050 -vv
+    stop_signal: SIGKILL
+
+  rest-api-1:
+    image: "hyperledger/sawtooth-rest-api:${TAG}"
+    networks:
+      raftnetwork:
+        aliases:
+          - rest-api-1
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${node1}"]
+    hostname: rest-api-1
+    expose:
+      - 4004
+      - 8008
+    command: sawtooth-rest-api --connect tcp://validator-1:4004 --bind rest-api-1:8008 -v
+    stop_signal: SIGKILL
+
+  rest-api-2:
+    image: "hyperledger/sawtooth-rest-api:${TAG}"
+    networks:
+      raftnetwork:
+        aliases:
+          - rest-api-2
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${node2}"]    
+    hostname: rest-api-2
+    expose:
+      - 4004
+      - 8008
+    command: sawtooth-rest-api --connect tcp://validator-2:4004 --bind rest-api-2:8008 -v
+    stop_signal: SIGKILL
+
+  rest-api-3:
+    image: "hyperledger/sawtooth-rest-api:${TAG}"
+    networks:
+      raftnetwork:
+        aliases:
+          - rest-api-3
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${node3}"]    
+    hostname: rest-api-3
+    expose:
+      - 4004
+      - 8008
+    command: sawtooth-rest-api --connect tcp://validator-3:4004 --bind rest-api-3:8008 -v
+    stop_signal: SIGKILL
+
+  intkey-tp-1:
+    image: "hyperledger/sawtooth-intkey-tp-python:${TAG}"
+    networks:
+      raftnetwork:
+        aliases:
+          - intkey-tp-1
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${node1}"]
+    hostname: intkey-tp-1
+    expose:
+      - 4004
+    command: intkey-tp-python -C tcp://validator-1:4004 -v
+    stop_signal: SIGKILL
+
+  intkey-tp-3:
+    image: "hyperledger/sawtooth-intkey-tp-python:${TAG}"
+    networks:
+      raftnetwork:
+        aliases:
+          - intkey-tp-3
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${node3}"]
+    hostname: intkey-tp-3 
+    expose:
+      - 4004
+    command: intkey-tp-python -C tcp://validator-3:4004 -v
+    stop_signal: SIGKILL
+
+  intkey-tp-2:
+    image: "hyperledger/sawtooth-intkey-tp-python:${TAG}"
+    networks:
+      raftnetwork:
+        aliases:
+          - intkey-tp-2
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${node2}"]
+    hostname: intkey-tp-2
+    expose:
+      - 4004
+    command: intkey-tp-python -C tcp://validator-2:4004 -v
+    stop_signal: SIGKILL
+
+  settings-tp-1:
+    image: "hyperledger/sawtooth-settings-tp:${TAG}"
+    networks:
+      raftnetwork:
+        aliases:
+          - settings-tp-1    
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${node1}"]
+    hostname: settings-tp-1
+    expose:
+      - 4004
+    command: settings-tp -C tcp://validator-1:4004 -v
+    stop_signal: SIGKILL
+
+  settings-tp-2:
+    image: "hyperledger/sawtooth-settings-tp:${TAG}"
+    networks:
+      raftnetwork:
+        aliases:
+          - settings-tp-2    
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${node2}"]
+    hostname: settings-tp-2
+    expose:
+      - 4004
+    command: settings-tp -C tcp://validator-2:4004 -v
+    stop_signal: SIGKILL
+
+  settings-tp-3:
+    image: "hyperledger/sawtooth-settings-tp:${TAG}"
+    networks:
+      raftnetwork:
+        aliases:
+          - settings-tp-3
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${node3}"]
+    hostname: settings-tp-3
+    expose:
+      - 4004
+    command: settings-tp -C tcp://validator-3:4004 -v
+    stop_signal: SIGKILL
+
+  shell:
+    image: hyperledger/sawtooth-all:latest
+    networks:
+      raftnetwork:
+        aliases:
+          - shell
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${node1}"]
+    hostname: shell
+    depends_on:
+      - rest-api-1
+      - rest-api-2
+      - rest-api-3
+    entrypoint: "bash -c \"\
+      tail -f /dev/null \
+      \""
