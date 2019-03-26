@@ -15,28 +15,42 @@
 // limitations under the License.
 // ------------------------------------------------------------------------------
 
-// Discard old builds after 31 days
-properties([[$class: 'BuildDiscarderProperty', strategy:
-        [$class: 'LogRotator', artifactDaysToKeepStr: '',
-        artifactNumToKeepStr: '', daysToKeepStr: '31', numToKeepStr: '']]]);
+pipeline {
+    agent {
+        node {
+            label 'master'
+            customWorkspace "workspace/${env.BUILD_TAG}"
+        }
+    }
 
-node ('master') {
-    timestamps {
-        // Create a unique workspace so Jenkins doesn't reuse an existing one
-        ws("workspace/${env.BUILD_TAG}") {
-            stage("Clone Repo") {
-                checkout scm
-                sh 'git fetch --tag'
+    triggers {
+        cron(env.BRANCH_NAME == 'master' ? 'H 3 * * *' : '')
+    }
+
+    options {
+        timestamps()
+        buildDiscarder(logRotator(daysToKeepStr: '31'))
+    }
+
+    environment {
+        ISOLATION_ID = sh(returnStdout: true, script: 'printf $BUILD_TAG | sha256sum | cut -c1-64').trim()
+    }
+
+    stages {
+        stage('Check Whitelist') {
+            steps {
+                readTrusted 'bin/whitelist'
+                sh './bin/whitelist "$CHANGE_AUTHOR" /etc/jenkins-authorized-builders'
             }
-
-            if (!(env.BRANCH_NAME == 'master' && env.JOB_BASE_NAME == 'master')) {
-                stage("Check Whitelist") {
-                    readTrusted 'bin/whitelist'
-                    sh './bin/whitelist "$CHANGE_AUTHOR" /etc/jenkins-authorized-builders'
+            when {
+                not {
+                    branch 'master'
                 }
             }
+        }
 
-            stage("Check for Signed-Off Commits") {
+        stage('Check for Signed-Off Commits') {
+            steps {
                 sh '''#!/bin/bash -l
                     if [ -v CHANGE_URL ] ;
                     then
@@ -58,41 +72,64 @@ node ('master') {
                     fi
                 '''
             }
+        }
 
-            // Set the ISOLATION_ID environment variable for the whole pipeline
-            env.ISOLATION_ID = sh(returnStdout: true, script: 'printf $BUILD_TAG | sha256sum | cut -c1-64').trim()
-            env.COMPOSE_PROJECT_NAME = sh(returnStdout: true, script: 'printf $BUILD_TAG | sha256sum | cut -c1-64').trim()
+        stage('Fetch Tags') {
+            steps {
+                sh 'git fetch --tag'
+            }
+        }
 
-            // Build Raft
-            stage("Build Raft") {
+        stage("Build Raft") {
+            steps {
               sh "docker-compose up --build --abort-on-container-exit --force-recreate --renew-anon-volumes --exit-code-from raft-engine"
               sh "docker-compose -f docker-compose-installed.yaml build"
             }
+        }
 
-            // Run the tests
-            stage("Run Tests") {
+        stage("Run Tests") {
+            steps {
                 sh './bin/run_docker_test tests/test_unit.yaml'
                 sh './bin/run_docker_test tests/test_liveness.yaml'
                 sh './bin/run_docker_test tests/test_dynamic_membership.yaml'
                 sh './bin/run_docker_test tests/test_crash_fault_tolerance.yaml'
-                // Clean up any residual containers that may not have been removed
-                sh '''
-                  docker rm -f \
-                    $(docker ps -f "label=com.sawtooth.isolation_id=${ISOLATION_ID}" \
-                    | awk {\'if(NR>1)print $1\'}) &> /dev/null
-                '''
             }
+        }
 
-            stage("Build Docs") {
+        stage("Build Docs") {
+            steps {
                 sh 'docker build . -f docs/Dockerfile -t sawtooth-raft-docs:$ISOLATION_ID'
                 sh 'docker run --rm -v $(pwd):/project/sawtooth-raft sawtooth-raft-docs:$ISOLATION_ID'
             }
+        }
 
-            stage("Archive Build Artifacts") {
+        stage("Build Archive Artifacts") {
+            steps {
                 sh 'docker-compose -f ci/copy-debs.yaml up'
                 sh 'docker-compose -f ci/copy-debs.yaml down'
-                archiveArtifacts artifacts: 'ci/sawtooth-raft*amd64.deb, docs/build/html/**, docs/build/latex/*.pdf'
             }
+        }
+    }
+
+    post {
+        always {
+            sh 'docker-compose down'
+            sh 'docker-compose -f ci/copy-debs.yaml down'
+            // Clean up any residual containers that may not have been removed
+            sh '''
+              docker rm -f \
+                $(docker ps -f "label=com.sawtooth.isolation_id=${ISOLATION_ID}" \
+                | awk {\'if(NR>1)print $1\'}) &> /dev/null
+            '''
+        }
+        success {
+            archiveArtifacts 'ci/sawtooth-raft*amd64.deb, docs/build/html/**, docs/build/latex/*.pdf'
+        }
+        aborted {
+            error "Aborted, exiting now"
+        }
+        failure {
+            error "Failed, exiting now"
         }
     }
 }
