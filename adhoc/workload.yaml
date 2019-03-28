@@ -42,6 +42,7 @@ services:
         --key-file /shared_data/keys/workload.priv \
         --rate ${RATE:-1} \
         --urls $$TARGETS \
+        --batch-size ${BATCH:-1} \
     \""
     volumes:
       - raft_shared_data:/shared_data
