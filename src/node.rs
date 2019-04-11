@@ -99,6 +99,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
     }
 
     pub fn on_block_new(&mut self, block: Block) {
+        let mut leader_state_publishing_this_block = false;
         if match self.leader_state {
             Some(LeaderState::Publishing(ref block_id)) => {
                 block_id == &block.block_id
@@ -107,12 +108,19 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         } {
             debug!("Leader({:?}) transition to Validating block {:?}", self.peer_id, block.block_id);
             self.leader_state = Some(LeaderState::Validating(block.block_id.clone()));
+            leader_state_publishing_this_block = true;
         }
 
-        debug!("Block has been received: {:?}", &block);
-        self.block_queue.block_new(block.clone());
-
-        self.service.check_blocks(vec![block.block_id]).expect("Failed to send check blocks");
+        // Add this block to block queue if it's a block which leader has published
+        // or if Raft node is in follower state
+        if leader_state_publishing_this_block || self.follower_state.is_some() {
+            debug!("Block has been received: {:?}", &block);
+            self.block_queue.block_new(block.clone());
+            self.service.check_blocks(vec![block.block_id]).expect("Failed to send check blocks");
+        } else {
+            // Fail the block if either leader or follower doesn't handle it
+            self.service.fail_block(block.block_id).expect("Fail block unsucessful");
+        }
     }
 
     pub fn on_block_valid(&mut self, block_id: BlockId) {
