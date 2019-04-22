@@ -15,7 +15,11 @@
  * ------------------------------------------------------------------------------
  */
 
-use raft::{Error, eraftpb::{ConfState, Entry, HardState, Snapshot}, storage::{MemStorage, Storage}};
+use raft::{
+    eraftpb::{ConfState, Entry, HardState, Snapshot},
+    storage::{MemStorage, Storage},
+    Error,
+};
 
 /// Extends the storage trait to include methods used by SawtoothRaftNode and provided by the
 /// MemStorage type.
@@ -62,9 +66,10 @@ impl StorageExt for MemStorage {
         cs: Option<&ConfState>,
         data: Vec<u8>,
     ) -> Result<Snapshot, Error> {
-        self.wl().create_snapshot(idx, cs.map(ConfState::clone), data).map(Snapshot::clone)
+        self.wl()
+            .create_snapshot(idx, cs.map(ConfState::clone), data)
+            .map(Snapshot::clone)
     }
-
 
     fn apply_snapshot(&self, snapshot: &Snapshot) -> Result<(), Error> {
         self.wl().apply_snapshot(snapshot.clone())
@@ -93,11 +98,14 @@ impl StorageExt for MemStorage {
 }
 
 #[cfg(test)]
-pub (crate) mod tests {
+pub(crate) mod tests {
     use super::*;
 
     use raft::{
-        self, storage::MemStorage, eraftpb::{ConfState, Entry, HardState}, RaftState, Storage,
+        self,
+        eraftpb::{ConfState, Entry, HardState},
+        storage::MemStorage,
+        RaftState, Storage,
     };
 
     const MAX: u64 = u64::max_value();
@@ -118,7 +126,6 @@ pub (crate) mod tests {
         storage.append(&entries).unwrap();
         entries
     }
-
 
     // Storage trait tests
 
@@ -151,7 +158,7 @@ pub (crate) mod tests {
         for i in 1..4 {
             for j in i..4 {
                 assert_eq!(
-                    Ok(entries[i-1..j-1].to_vec()),
+                    Ok(entries[i - 1..j - 1].to_vec()),
                     storage.entries(i as u64, j as u64, MAX)
                 );
             }
@@ -202,7 +209,6 @@ pub (crate) mod tests {
         assert_eq!(Ok(4), storage.first_index());
         assert_eq!(Ok(5), storage.last_index());
     }
-
 
     // StorageExt trait tests
 
@@ -277,8 +283,12 @@ pub (crate) mod tests {
 
         assert_eq!(mem_storage.snapshot(), storage.snapshot());
 
-        let mem_snapshot = mem_storage.create_snapshot(3, None, "".into()).expect("MemStorage: Create snapshot failed");
-        let fs_snapshot = storage.create_snapshot(3, None, "".into()).expect("FsStorage: Create snapshot failed");
+        let mem_snapshot = mem_storage
+            .create_snapshot(3, None, "".into())
+            .expect("MemStorage: Create snapshot failed");
+        let fs_snapshot = storage
+            .create_snapshot(3, None, "".into())
+            .expect("FsStorage: Create snapshot failed");
         assert_eq!(mem_snapshot, fs_snapshot);
 
         assert_eq!(

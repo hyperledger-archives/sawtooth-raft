@@ -91,10 +91,12 @@ fn main() {
     let (driver, _stop) = ZmqDriver::new();
 
     info!("Raft Node connecting to '{}'", &args.endpoint);
-    driver.start(&args.endpoint, raft_engine).unwrap_or_else(|err| {
-        error!("{}", err);
-        process::exit(1);
-    });
+    driver
+        .start(&args.endpoint, raft_engine)
+        .unwrap_or_else(|err| {
+            error!("{}", err);
+            process::exit(1);
+        });
 }
 
 fn get_console_config(log_level: log::LevelFilter) -> Config {
@@ -123,7 +125,7 @@ fn parse_args() -> RaftCliArgs {
          "increase output verbosity")
         (@arg logconfig: -L --log_config +takes_value
          "path to logging config file"))
-        .get_matches();
+    .get_matches();
 
     let log_level = match matches.occurrences_of("verbose") {
         0 => log::LevelFilter::Warn,

@@ -22,23 +22,18 @@ use std::time::{Duration, Instant};
 use protobuf::{self, Message as ProtobufMessage};
 use raft::{
     self,
-    eraftpb::{
-        ConfChange,
-        ConfChangeType,
-        EntryType,
-        Message as RaftMessage,
-    },
+    eraftpb::{ConfChange, ConfChangeType, EntryType, Message as RaftMessage},
     raw_node::RawNode,
 };
 
 use sawtooth_sdk::consensus::{
-    engine::{Block, BlockId, PeerId, Error},
+    engine::{Block, BlockId, Error, PeerId},
     service::Service,
 };
 
 use block_queue::BlockQueue;
+use config::{get_peers_from_settings, peer_id_to_raft_id};
 use storage::StorageExt;
-use config::{peer_id_to_raft_id, get_peers_from_settings};
 
 /// Possible states a leader node can be in
 ///
@@ -84,7 +79,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         raw_node: RawNode<S>,
         service: Box<Service>,
         peers: Vec<PeerId>,
-        period: Duration
+        period: Duration,
     ) -> Self {
         SawtoothRaftNode {
             peer_id,
@@ -93,26 +88,32 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             leader_state: None,
             follower_state: Some(FollowerState::Idle),
             block_queue: BlockQueue::new(),
-            raft_id_to_peer_id: peers.into_iter().map(|peer_id| (peer_id_to_raft_id(&peer_id), peer_id)).collect(),
+            raft_id_to_peer_id: peers
+                .into_iter()
+                .map(|peer_id| (peer_id_to_raft_id(&peer_id), peer_id))
+                .collect(),
             period,
         }
     }
 
     pub fn on_block_new(&mut self, block: Block) {
         if match self.leader_state {
-            Some(LeaderState::Publishing(ref block_id)) => {
-                block_id == &block.block_id
-            },
+            Some(LeaderState::Publishing(ref block_id)) => block_id == &block.block_id,
             _ => false,
         } {
-            debug!("Leader({:?}) transition to Validating block {:?}", self.peer_id, block.block_id);
+            debug!(
+                "Leader({:?}) transition to Validating block {:?}",
+                self.peer_id, block.block_id
+            );
             self.leader_state = Some(LeaderState::Validating(block.block_id.clone()));
         }
 
         debug!("Block has been received: {:?}", &block);
         self.block_queue.block_new(block.clone());
 
-        self.service.check_blocks(vec![block.block_id]).expect("Failed to send check blocks");
+        self.service
+            .check_blocks(vec![block.block_id])
+            .expect("Failed to send check blocks");
     }
 
     pub fn on_block_valid(&mut self, block_id: BlockId) {
@@ -120,51 +121,62 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         debug!("Block has been validated: {:?}", &block_id);
         self.block_queue.block_valid(&block_id);
         if match self.leader_state {
-            Some(LeaderState::Publishing(ref expected)) => {
-                expected == &block_id
-            },
-            Some(LeaderState::Validating(ref expected)) => {
-                expected == &block_id
-            },
+            Some(LeaderState::Publishing(ref expected)) => expected == &block_id,
+            Some(LeaderState::Validating(ref expected)) => expected == &block_id,
             _ => false,
         } {
-            debug!("Leader({:?}) transition to Proposing block {:?}", self.peer_id, block_id);
+            debug!(
+                "Leader({:?}) transition to Proposing block {:?}",
+                self.peer_id, block_id
+            );
             info!("Leader({:?}) proposed block {:?}", self.peer_id, block_id);
-            self.raw_node.propose(vec![], block_id.clone().into()).expect("Failed to propose block to Raft");
+            self.raw_node
+                .propose(vec![], block_id.clone())
+                .expect("Failed to propose block to Raft");
             self.leader_state = Some(LeaderState::Proposing(block_id));
         }
     }
 
+    #[allow(clippy::ptr_arg)]
     pub fn on_block_commit(&mut self, block_id: &BlockId) {
         if match self.leader_state {
-            Some(LeaderState::Committing(ref committing)) => {
-                committing == block_id
-            },
+            Some(LeaderState::Committing(ref committing)) => committing == block_id,
             _ => false,
         } {
             let entry = self.block_queue.block_committed();
-            self.raw_node.raft.mut_store().set_applied(entry).expect("Failed to set last applied entry.");
+            self.raw_node
+                .raft
+                .mut_store()
+                .set_applied(entry)
+                .expect("Failed to set last applied entry.");
 
             if let Some(change) = self.check_for_conf_change(block_id.clone()) {
                 debug!("Leader({:?}) transition to ChangingConfig", self.peer_id);
                 self.leader_state = Some(LeaderState::ChangingConfig);
                 self.raw_node.propose_conf_change(vec![], change).unwrap();
             } else {
-                debug!("Leader({:?}) transition to Building block {:?}", self.peer_id, block_id);
+                debug!(
+                    "Leader({:?}) transition to Building block {:?}",
+                    self.peer_id, block_id
+                );
                 self.leader_state = Some(LeaderState::Building(Instant::now()));
-                self.service.initialize_block(None).expect("Failed to initialize block");
+                self.service
+                    .initialize_block(None)
+                    .expect("Failed to initialize block");
             }
         }
 
         if match self.follower_state {
-            Some(FollowerState::Committing(ref committing)) => {
-                committing == block_id
-            },
+            Some(FollowerState::Committing(ref committing)) => committing == block_id,
             _ => false,
         } {
             info!("Peer({:?}) committed block {:?}", self.peer_id, block_id);
             let entry = self.block_queue.block_committed();
-            self.raw_node.raft.mut_store().set_applied(entry).expect("Failed to set last applied entry.");
+            self.raw_node
+                .raft
+                .mut_store()
+                .set_applied(entry)
+                .expect("Failed to set last applied entry.");
             self.follower_state = Some(FollowerState::Idle);
         }
     }
@@ -173,7 +185,10 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         let raft_message = protobuf::parse_from_bytes::<RaftMessage>(message)
             .expect("Failed to interpret bytes as Raft message");
         self.raw_node.step(raft_message).unwrap_or_else(|err| {
-            warn!("Peer({:?}) encountered error when stepping: {:?}", self.peer_id, err);
+            warn!(
+                "Peer({:?}) encountered error when stepping: {:?}",
+                self.peer_id, err
+            );
         });
     }
 
@@ -188,43 +203,48 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         // 2. We are building a block
         // 3. The block has been building long enough
         if match self.leader_state {
-            Some(LeaderState::Building(instant)) => {
-                instant.elapsed() >= self.period
-            }
+            Some(LeaderState::Building(instant)) => instant.elapsed() >= self.period,
             _ => false,
         } {
             match self.service.summarize_block() {
                 //Ignore Ok condition
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(Error::BlockNotReady) => {
-                    debug!("Leader({:?}) tried to summarize block but block not ready", self.peer_id);
+                    debug!(
+                        "Leader({:?}) tried to summarize block but block not ready",
+                        self.peer_id
+                    );
                     return;
-                },
+                }
                 Err(err) => panic!("Failed to summarize block: {:?}", err),
             };
 
             match self.service.finalize_block(vec![]) {
                 Ok(block_id) => {
-                    debug!("Leader({:?}) transition to Publishing block {:?}", self.peer_id, block_id);
+                    debug!(
+                        "Leader({:?}) transition to Publishing block {:?}",
+                        self.peer_id, block_id
+                    );
                     self.leader_state = Some(LeaderState::Publishing(block_id));
-                },
+                }
                 Err(Error::BlockNotReady) => {
-                     // Try again later
-                    debug!("Leader({:?}) tried to finalize block but block not ready", self.peer_id);
-                },
+                    // Try again later
+                    debug!(
+                        "Leader({:?}) tried to finalize block but block not ready",
+                        self.peer_id
+                    );
+                }
                 Err(err) => panic!("Failed to finalize block: {:?}", err),
             };
         }
     }
 
     fn send_msg(&mut self, raft_msg: &RaftMessage) {
-        let msg = raft_msg.write_to_bytes().expect("Could not serialize RaftMessage");
+        let msg = raft_msg
+            .write_to_bytes()
+            .expect("Could not serialize RaftMessage");
         if let Some(peer_id) = self.raft_id_to_peer_id.get(&raft_msg.to) {
-            match self.service.send_to(
-                peer_id,
-                "",
-                msg.to_vec(),
-            ) {
+            match self.service.send_to(peer_id, "", msg.to_vec()) {
                 Ok(_) => (),
                 Err(Error::UnknownPeer(s)) => warn!("Tried to send to disconnected peer: {}", s),
                 Err(err) => panic!("Failed to send to peer: {:?}", err),
@@ -248,34 +268,48 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
             if self.leader_state.is_none() {
                 // Check if we stepped up as leader from follower while in committing state
                 if let Some(FollowerState::Committing(ref block_id)) = self.follower_state {
-                    debug!("Follower({:?}) became leader while it was in committing state",
-                        self.peer_id);
+                    debug!(
+                        "Follower({:?}) became leader while it was in committing state",
+                        self.peer_id
+                    );
                     self.leader_state = Some(LeaderState::Committing(block_id.clone()));
                 } else {
                     // We need to start building a block
-                    debug!("Leader({:?}) became leader, intializing block", self.peer_id);
+                    debug!(
+                        "Leader({:?}) became leader, intializing block",
+                        self.peer_id
+                    );
                     self.leader_state = Some(LeaderState::Building(Instant::now()));
-                    self.service.initialize_block(None).expect("Failed to initialize block");
+                    self.service
+                        .initialize_block(None)
+                        .expect("Failed to initialize block");
                 }
                 self.follower_state = None;
             }
             // If the peer is leader, the leader can send messages to other followers ASAP.
             for msg in ready.messages.drain(..) {
-                debug!("Leader({:?}) wants to send message: {:?}", self.peer_id, msg);
+                debug!(
+                    "Leader({:?}) wants to send message: {:?}",
+                    self.peer_id, msg
+                );
                 self.send_msg(&msg);
             }
         }
 
         if !raft::is_empty_snap(&ready.snapshot) {
             // This is a snapshot, we need to apply the snapshot at first.
-            self.raw_node.mut_store()
+            self.raw_node
+                .mut_store()
                 .apply_snapshot(&ready.snapshot)
                 .unwrap();
         }
 
         if !ready.entries.is_empty() {
             // Append entries to the Raft log
-            self.raw_node.mut_store().append(&ready.entries).expect("Failed to append entries");
+            self.raw_node
+                .mut_store()
+                .append(&ready.entries)
+                .expect("Failed to append entries");
         }
 
         if let Some(ref hs) = ready.hs {
@@ -294,7 +328,7 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
                     }
                     Some(LeaderState::Committing(ref block_id)) => {
                         self.follower_state = Some(FollowerState::Committing(block_id.clone()));
-                    },
+                    }
                     _ => (),
                 }
                 self.leader_state = None;
@@ -320,8 +354,11 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
 
                 if entry.get_entry_type() == EntryType::EntryNormal {
                     let block_id: BlockId = BlockId::from(Vec::from(entry.get_data()));
-                    self.block_queue.add_block_commit(block_id, entry.get_index());
-                } else if entry.get_entry_type() == EntryType::EntryConfChange && entry.get_term() != 1 {
+                    self.block_queue
+                        .add_block_commit(block_id, entry.get_index());
+                } else if entry.get_entry_type() == EntryType::EntryConfChange
+                    && entry.get_term() != 1
+                {
                     let change: ConfChange = protobuf::parse_from_bytes(entry.get_data())
                         .expect("Failed to parse ConfChange");
 
@@ -332,7 +369,9 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
                     if let Some(LeaderState::ChangingConfig) = self.leader_state {
                         debug!("Leader({:?}) transition to Building block", self.peer_id);
                         self.leader_state = Some(LeaderState::Building(Instant::now()));
-                        self.service.initialize_block(None).expect("Failed to initialize block");
+                        self.service
+                            .initialize_block(None)
+                            .expect("Failed to initialize block");
                     }
                 }
             }
@@ -348,35 +387,46 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
         ReadyStatus::Continue
     }
 
+    #[allow(clippy::ptr_arg)]
     fn commit_block(&mut self, block_id: &BlockId) {
         if match self.leader_state {
-            Some(LeaderState::Proposing(ref proposed)) => {
-                block_id == proposed
-            },
+            Some(LeaderState::Proposing(ref proposed)) => block_id == proposed,
             _ => false,
         } {
-            debug!("Leader({:?}) transitioning to Committing block {:?}", self.peer_id, block_id);
+            debug!(
+                "Leader({:?}) transitioning to Committing block {:?}",
+                self.peer_id, block_id
+            );
             self.leader_state = Some(LeaderState::Committing(block_id.clone()));
-            self.service.commit_block(block_id.clone()).expect("Failed to commit block");
+            self.service
+                .commit_block(block_id.clone())
+                .expect("Failed to commit block");
         }
 
         if let Some(FollowerState::Idle) = self.follower_state {
             debug!("Peer({:?}) committing block {:?}", self.peer_id, block_id);
             self.follower_state = Some(FollowerState::Committing(block_id.clone()));
-            self.service.commit_block(block_id.clone()).expect("Failed to commit block");
+            self.service
+                .commit_block(block_id.clone())
+                .expect("Failed to commit block");
         }
     }
 
     fn check_for_conf_change(&mut self, block_id: BlockId) -> Option<ConfChange> {
         // Get list of peers from settings
-        let settings = self.service
-            .get_settings(block_id, vec![String::from("sawtooth.consensus.raft.peers")])
+        let settings = self
+            .service
+            .get_settings(
+                block_id,
+                vec![String::from("sawtooth.consensus.raft.peers")],
+            )
             .expect("Failed to get settings");
         let peers = get_peers_from_settings(&settings);
         let peers: HashSet<PeerId> = HashSet::from_iter(peers);
 
         // Check if membership has changed
-        let old_peers: HashSet<PeerId> = HashSet::from_iter(self.raft_id_to_peer_id.values().cloned());
+        let old_peers: HashSet<PeerId> =
+            HashSet::from_iter(self.raft_id_to_peer_id.values().cloned());
         let difference: HashSet<PeerId> = peers.symmetric_difference(&old_peers).cloned().collect();
 
         if !difference.is_empty() {
@@ -386,7 +436,10 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
 
             // The raft-rs library can only add or delete one node at a time, so there should
             // only be one item in this iterator
-            let peer_id = difference.iter().nth(0).expect("Difference cannot be empty here.");
+            let peer_id = difference
+                .iter()
+                .nth(0)
+                .expect("Difference cannot be empty here.");
             // Initialize change
             let mut change = ConfChange::new();
             change.set_node_id(peer_id_to_raft_id(&peer_id));
@@ -400,7 +453,10 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
                 change.set_change_type(ConfChangeType::RemoveNode);
             }
 
-            info!("Leader({:?}) detected configuration change {:?}", self.peer_id, change);
+            info!(
+                "Leader({:?}) detected configuration change {:?}",
+                self.peer_id, change
+            );
             return Some(change);
         }
 
@@ -420,13 +476,11 @@ impl<S: StorageExt> SawtoothRaftNode<S> {
                 }
 
                 self.raft_id_to_peer_id.remove(&raft_id).unwrap();
-            },
+            }
             ConfChangeType::AddNode => {
-                self.raft_id_to_peer_id.insert(
-                    raft_id,
-                    PeerId::from(Vec::from(change.get_context()))
-                );
-            },
+                self.raft_id_to_peer_id
+                    .insert(raft_id, PeerId::from(Vec::from(change.get_context())));
+            }
             _ => {}
         }
 
