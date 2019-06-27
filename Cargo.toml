@@ -15,7 +15,7 @@
 
 [package]
 name = "sawtooth-raft-engine"
-version = "0.1.0"
+version = "0.1.4"
 authors = ["Intel Corporation"]
 description = "Hyperledger Sawtooth Raft consensus engine"
 
