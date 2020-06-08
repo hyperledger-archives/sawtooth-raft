@@ -1,0 +1,9 @@
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+repository:
+  name: sawtooth-raft
+  description: Archive of sawtooth-raft
+  archived: true
+  private: false
