@@ -55,3 +55,10 @@ RUN echo "deb [arch=amd64] http://repo.sawtooth.me/ubuntu/nightly bionic univers
  && chmod +x /usr/local/bin/docker-compose \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
+
+RUN curl -sL https://repos.influxdata.com/influxdb.key | apt-key add -
+RUN echo deb https://repos.influxdata.com/ubuntu bionic stable > /etc/apt/sources.list.d/influxdb.list
+RUN apt-get update && apt-get install -y -q \
+    telegraf \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
