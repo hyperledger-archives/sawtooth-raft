@@ -29,6 +29,14 @@ assets = [
 ]
 maintainer-scripts = "packaging/ubuntu"
 
+[profile.release]
+debug = false
+opt-level = 2
+rpath = false
+lto = true
+debug-assertions = false
+panic = "abort"
+
 [dependencies]
 clap = "2"
 hex = "0.3"
